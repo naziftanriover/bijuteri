@@ -1,0 +1,2482 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="theme-color" content="#d97706" />
+<link rel="manifest" href="manifest.json" />
+<title>Kuyumcu POS</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  :root {
+    --color-primary: #d97706;
+    --color-primary-dark: #b45309;
+    --color-primary-light: #fde68a;
+  }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: #f3f4f6;
+    color: #111827;
+  }
+  .btn-primary {
+    background-color: var(--color-primary);
+    color: white;
+  }
+  .btn-primary:hover { background-color: var(--color-primary-dark); }
+  .text-primary { color: var(--color-primary); }
+  .bg-primary { background-color: var(--color-primary); }
+  .border-primary { border-color: var(--color-primary); }
+  .ring-primary { --tw-ring-color: var(--color-primary); }
+
+  /* Role-based visibility */
+  body.role-cashier .admin-only { display: none !important; }
+
+  /* Toast */
+  .toast {
+    transition: all 0.3s ease;
+    transform: translateX(120%);
+  }
+  .toast.show { transform: translateX(0); }
+
+  /* Sidebar */
+  .nav-item.active {
+    background-color: var(--color-primary);
+    color: white;
+  }
+  .nav-item.active svg { color: white; }
+
+  /* Modal */
+  .modal-backdrop {
+    background: rgba(0,0,0,0.5);
+  }
+
+  /* Scrollbar slim */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* Loading */
+  .spinner {
+    border: 3px solid #e5e7eb;
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    width: 28px; height: 28px;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Hide on small / large */
+  @media (max-width: 767px) {
+    .desktop-only { display: none !important; }
+  }
+  @media (min-width: 768px) {
+    .mobile-only { display: none !important; }
+  }
+
+  /* Product card low stock */
+  .low-stock { border-color: #ef4444 !important; box-shadow: 0 0 0 1px #fecaca; }
+
+  /* Print */
+  @media print {
+    body * { visibility: hidden; }
+    #printArea, #printArea * { visibility: visible; }
+    #printArea { position: absolute; left: 0; top: 0; width: 100%; }
+  }
+
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 2px var(--color-primary-light); }
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ====================== LOGIN ====================== -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center px-4" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
+    <div class="text-center mb-6">
+      <div class="w-20 h-20 rounded-full mx-auto flex items-center justify-center text-white text-3xl font-bold mb-3" style="background-color: var(--color-primary);">
+        <span id="loginLogo">P</span>
+      </div>
+      <h1 id="loginStoreName" class="text-2xl font-bold text-gray-800">Kuyumcu POS</h1>
+      <p class="text-gray-500 text-sm mt-1">Hesabınızla giriş yapın</p>
+    </div>
+
+    <!-- Role selector -->
+    <div id="roleSelector" class="grid grid-cols-2 gap-3 mb-6">
+      <button data-role="admin" class="role-btn border-2 border-gray-200 rounded-xl py-4 text-center hover:border-primary transition">
+        <div class="text-2xl mb-1">&#x1F451;</div>
+        <div class="font-semibold">Yönetim</div>
+      </button>
+      <button data-role="cashier" class="role-btn border-2 border-gray-200 rounded-xl py-4 text-center hover:border-primary transition">
+        <div class="text-2xl mb-1">&#x1F464;</div>
+        <div class="font-semibold">Kasiyer</div>
+      </button>
+    </div>
+
+    <!-- Cashier selector -->
+    <div id="cashierSelector" class="hidden mb-4">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Kasiyer Seçin</label>
+      <select id="cashierSelect" class="w-full border-2 border-gray-200 rounded-lg p-3">
+        <option value="1">Kasiyer 1</option>
+        <option value="2">Kasiyer 2</option>
+        <option value="3">Kasiyer 3</option>
+      </select>
+    </div>
+
+    <!-- Password -->
+    <div id="passwordSection" class="hidden">
+      <label class="block text-sm font-medium text-gray-700 mb-1">Şifre</label>
+      <input id="passwordInput" type="password" inputmode="numeric" maxlength="20" class="w-full border-2 border-gray-200 rounded-lg p-3 text-center text-2xl tracking-widest" placeholder="••••" />
+      <p id="loginError" class="hidden text-red-600 text-sm mt-2 text-center">Hatalı şifre, tekrar deneyin.</p>
+      <button id="loginBtn" class="w-full btn-primary rounded-lg py-3 mt-4 font-semibold">Giriş Yap</button>
+      <button id="backRoleBtn" class="w-full mt-2 text-gray-500 text-sm">&larr; Geri</button>
+    </div>
+
+    <p class="text-center text-xs text-gray-400 mt-6">Versiyon 1.0 &middot; PWA destekli</p>
+  </div>
+</div>
+
+<!-- ====================== APP ====================== -->
+<div id="app" class="hidden min-h-screen flex flex-col">
+  <!-- Top navbar -->
+  <header class="bg-white border-b shadow-sm sticky top-0 z-30">
+    <div class="flex items-center justify-between px-4 h-14">
+      <div class="flex items-center gap-2">
+        <button id="mobileMenuBtn" class="mobile-only p-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+        <div class="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold" style="background-color: var(--color-primary);">
+          <span id="navLogo">P</span>
+        </div>
+        <span id="navStoreName" class="font-bold text-lg">Kuyumcu POS</span>
+      </div>
+      <div class="flex items-center gap-3">
+        <div id="fbBadge" class="hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded-full"></div>
+        <button id="dayCloseBtn" class="admin-only hidden md:flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg border border-orange-300 text-orange-700 hover:bg-orange-50 font-semibold" title="Gün Sonu Kapanış Raporu">
+          📋 Günü Kapat
+        </button>
+        <div class="hidden sm:block text-sm">
+          <span class="text-gray-500">Kullanıcı:</span>
+          <span id="currentUserLabel" class="font-semibold"></span>
+        </div>
+        <button id="logoutBtn" class="text-sm text-red-600 hover:bg-red-50 px-3 py-1 rounded-lg">Çıkış</button>
+      </div>
+    </div>
+    <div id="fbBanner" class="hidden text-xs text-center py-1 bg-yellow-100 text-yellow-800 border-t border-yellow-200"></div>
+  </header>
+
+  <div class="flex flex-1 overflow-hidden">
+    <!-- Sidebar (desktop) -->
+    <aside id="sidebar" class="desktop-only w-56 bg-white border-r flex-shrink-0">
+      <nav class="p-3 space-y-1">
+        <button data-view="pos" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-100 text-left">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+          <span>Kasa</span>
+        </button>
+        <button data-view="stock" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-100 text-left">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+          <span>Stok</span>
+          <span id="lowStockBadge" class="hidden ml-auto text-xs bg-red-500 text-white font-bold px-1.5 py-0.5 rounded-full min-w-[20px] text-center"></span>
+        </button>
+        <button data-view="customers" class="nav-item admin-only w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-100 text-left">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0zm6 0a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          <span>Müşteriler</span>
+        </button>
+        <button data-view="reports" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-100 text-left">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6h13M9 5h13M3 5l2 2 3-3"/></svg>
+          <span>Raporlar</span>
+        </button>
+        <button data-view="settings" class="nav-item admin-only w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-100 text-left">
+          <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          <span>Ayarlar</span>
+        </button>
+        <div class="border-t mt-2 pt-2 admin-only">
+          <button id="dayCloseBtnSidebar" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-orange-50 text-left text-orange-700 font-semibold">
+            <span class="text-lg">📋</span>
+            <span>Günü Kapat</span>
+          </button>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Mobile sidebar overlay -->
+    <div id="mobileSidebar" class="mobile-only hidden fixed inset-0 z-40">
+      <div class="absolute inset-0 bg-black/50" id="mobileSidebarBackdrop"></div>
+      <div class="absolute left-0 top-0 bottom-0 w-64 bg-white p-3 overflow-y-auto">
+        <div class="flex items-center justify-between mb-3">
+          <span class="font-bold">Menü</span>
+          <button id="closeMobileSidebar" class="p-1">&times;</button>
+        </div>
+        <nav class="space-y-1" id="mobileNav"></nav>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto pb-20 md:pb-4">
+      <div id="viewContainer"></div>
+    </main>
+  </div>
+
+  <!-- Mobile bottom nav -->
+  <nav class="mobile-only fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-30 grid grid-cols-5 text-xs">
+    <button data-view="pos" class="mob-nav-item flex flex-col items-center justify-center py-2 text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+      <span>Kasa</span>
+    </button>
+    <button data-view="stock" class="mob-nav-item relative flex flex-col items-center justify-center py-2 text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+      <span id="lowStockBadgeMob" class="hidden absolute top-1 right-3 text-xs bg-red-500 text-white font-bold px-1 rounded-full min-w-[16px] text-center leading-4"></span>
+      <span>Stok</span>
+    </button>
+    <button data-view="customers" class="mob-nav-item admin-only flex flex-col items-center justify-center py-2 text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a4 4 0 00-3-3.87M9 20H4v-2a4 4 0 013-3.87m6-5.13a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+      <span>Müşteri</span>
+    </button>
+    <button data-view="reports" class="mob-nav-item flex flex-col items-center justify-center py-2 text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-6h13M9 5h13"/></svg>
+      <span>Rapor</span>
+    </button>
+    <button data-view="settings" class="mob-nav-item admin-only flex flex-col items-center justify-center py-2 text-gray-600">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/></svg>
+      <span>Ayar</span>
+    </button>
+  </nav>
+</div>
+
+<!-- Toasts -->
+<div id="toastContainer" class="fixed top-4 right-4 z-[100] space-y-2"></div>
+
+<!-- Modal container -->
+<div id="modalContainer"></div>
+
+<!-- Print area (for receipts) -->
+<div id="printArea" class="hidden"></div>
+
+<!-- ====================== APP SCRIPT ====================== -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getFirestore, collection, doc, setDoc, getDoc, getDocs,
+  onSnapshot, deleteDoc, writeBatch, query, where
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js";
+
+// ============ GLOBAL STATE ============
+const STORE_NAME_DEFAULT = 'Kuyumcu POS';
+const DEFAULT_PRIMARY = '#d97706';
+
+const state = {
+  view: 'pos',
+  session: null,           // {role, cashierName, cashierIndex, expiresAt}
+  fb: { app: null, db: null, enabled: false, unsubs: [] },
+  products: [],
+  categories: [],
+  customers: [],
+  sales: [],
+  customerPayments: [],
+  settings: {},
+  cart: [],                // [{productId, name, sellPrice, buyPrice, qty}]
+  cartDiscount: 0,
+  cartVatEnabled: false,
+  cartVatRate: 18,
+  cartCustomerName: '',
+  cartCustomerPhone: '',
+  cartCustomerId: null,
+  currentPay: null,
+  posSearch: '',
+  stockFilter: 'all',
+  reportDateFrom: toLocalISODate(new Date()),
+  reportDateTo:   toLocalISODate(new Date()),
+  charts: {}
+};
+
+// ============ HELPERS ============
+// Yerel saat dilimine göre YYYY-MM-DD — UTC toISOString'in aksine sabah 00-03 arası doğru tarihi verir
+function toLocalISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dy = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dy}`;
+}
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+const fmt = (n) => Number(n || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' TL';
+const fmtDate = (ts) => {
+  if (!ts) return '-';
+  const d = new Date(ts);
+  return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+};
+const fmtDay = (ts) => {
+  if (!ts) return '-';
+  const d = new Date(ts);
+  return d.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+
+async function hashPassword(password) {
+  const msgBuffer = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function showToast(message, type = 'success') {
+  const colors = {
+    success: 'bg-green-600',
+    error: 'bg-red-600',
+    warning: 'bg-yellow-600',
+    info: 'bg-blue-600'
+  };
+  const icons = {
+    success: '&#x2714;',
+    error: '&#x2716;',
+    warning: '&#x26A0;',
+    info: 'i'
+  };
+  const el = document.createElement('div');
+  el.className = `toast ${colors[type] || colors.success} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 min-w-[260px]`;
+  el.innerHTML = `<span class="text-lg">${icons[type] || ''}</span><span class="flex-1">${esc(message)}</span>`;
+  $('#toastContainer').appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(() => {
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+function showModal(html, opts = {}) {
+  const wrap = document.createElement('div');
+  wrap.className = 'modal-backdrop fixed inset-0 z-50 flex items-center justify-center p-4';
+  wrap.innerHTML = `<div class="bg-white rounded-2xl shadow-2xl w-full ${opts.maxW || 'max-w-md'} max-h-[92vh] overflow-y-auto">${html}</div>`;
+  wrap.addEventListener('click', (e) => { if (e.target === wrap && !opts.persistent) wrap.remove(); });
+  $('#modalContainer').appendChild(wrap);
+  return wrap;
+}
+function closeAllModals() { $('#modalContainer').innerHTML = ''; }
+
+function confirmDialog(message, onYes) {
+  const m = showModal(`
+    <div class="p-6">
+      <div class="text-center">
+        <div class="w-12 h-12 mx-auto bg-yellow-100 rounded-full flex items-center justify-center text-2xl text-yellow-600 mb-3">?</div>
+        <p class="text-gray-700">${esc(message)}</p>
+      </div>
+      <div class="flex gap-2 mt-6">
+        <button class="flex-1 border rounded-lg py-2" data-act="no">Vazgeç</button>
+        <button class="flex-1 bg-red-600 text-white rounded-lg py-2" data-act="yes">Evet</button>
+      </div>
+    </div>
+  `);
+  m.querySelector('[data-act="no"]').onclick = () => m.remove();
+  m.querySelector('[data-act="yes"]').onclick = () => { m.remove(); onYes(); };
+}
+
+// ============ STORAGE ============
+const LS = {
+  get(key, def = null) {
+    try { const v = localStorage.getItem(key); return v === null ? def : JSON.parse(v); }
+    catch { return def; }
+  },
+  set(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+};
+
+// ============ SETTINGS ============
+async function loadSettings() {
+  let s = LS.get('settings');
+  if (!s) {
+    s = {
+      adminPassword: await hashPassword('1234'),
+      cashier1Password: await hashPassword('1111'),
+      cashier1Name: 'Kasiyer 1',
+      cashier2Password: await hashPassword('2222'),
+      cashier2Name: 'Kasiyer 2',
+      cashier3Password: await hashPassword('3333'),
+      cashier3Name: 'Kasiyer 3',
+      storeName: STORE_NAME_DEFAULT,
+      primaryColor: DEFAULT_PRIMARY
+    };
+    LS.set('settings', s);
+  }
+  state.settings = s;
+  applyTheme();
+}
+function applyTheme() {
+  const c = state.settings.primaryColor || DEFAULT_PRIMARY;
+  document.documentElement.style.setProperty('--color-primary', c);
+  // derive a darker tone
+  document.documentElement.style.setProperty('--color-primary-dark', shade(c, -15));
+  document.documentElement.style.setProperty('--color-primary-light', shade(c, 60));
+  const name = state.settings.storeName || STORE_NAME_DEFAULT;
+  document.title = name;
+  $('#loginStoreName') && ($('#loginStoreName').textContent = name);
+  $('#navStoreName') && ($('#navStoreName').textContent = name);
+  const letter = (name.trim().charAt(0) || 'P').toUpperCase();
+  $('#loginLogo') && ($('#loginLogo').textContent = letter);
+  $('#navLogo') && ($('#navLogo').textContent = letter);
+}
+function shade(hex, percent) {
+  const c = hex.replace('#', '');
+  const num = parseInt(c, 16);
+  let r = (num >> 16) + Math.round(255 * percent / 100);
+  let g = ((num >> 8) & 0x00ff) + Math.round(255 * percent / 100);
+  let b = (num & 0x0000ff) + Math.round(255 * percent / 100);
+  r = Math.min(255, Math.max(0, r));
+  g = Math.min(255, Math.max(0, g));
+  b = Math.min(255, Math.max(0, b));
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+// ============ FIREBASE ============
+function parseConfigText(text) {
+  const t = (text || '').trim();
+  if (!t) return null;
+  try { return JSON.parse(t); } catch (_) {}
+  try {
+    // Try to evaluate JS object literal safely-ish
+    const obj = Function('"use strict"; return (' + t + ');')();
+    if (obj && typeof obj === 'object') return obj;
+  } catch (_) {}
+  return null;
+}
+
+async function initFirebase() {
+  const cfgText = LS.get('firebaseConfigRaw');
+  const cfg = cfgText ? parseConfigText(cfgText) : null;
+  if (!cfg || !cfg.apiKey) {
+    showBanner('Firebase bağlı değil - yerel mod aktif. Bulut senkron için Ayarlar > Firebase Config bölümünden yapılandırın.');
+    setFbBadge(false);
+    return false;
+  }
+  try {
+    state.fb.app = initializeApp(cfg);
+    state.fb.db = getFirestore(state.fb.app);
+    state.fb.enabled = true;
+    hideBanner();
+    setFbBadge(true);
+    await pushLocalToFirebaseIfEmpty();
+    subscribeFirestore();
+    return true;
+  } catch (e) {
+    console.error('Firebase init error', e);
+    showBanner('Firebase bağlanamadı: ' + e.message);
+    setFbBadge(false);
+    return false;
+  }
+}
+
+function setFbBadge(on) {
+  const b = $('#fbBadge');
+  if (!b) return;
+  b.classList.remove('hidden');
+  if (on) { b.className = 'hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-700'; b.innerHTML = '<span>&#x25CF;</span> Bulut'; }
+  else { b.className = 'hidden md:flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-gray-200 text-gray-700'; b.innerHTML = '<span>&#x25CB;</span> Yerel'; }
+}
+function showBanner(msg) {
+  const b = $('#fbBanner');
+  if (!b) return;
+  b.textContent = msg;
+  b.classList.remove('hidden');
+}
+function hideBanner() {
+  const b = $('#fbBanner');
+  if (b) b.classList.add('hidden');
+}
+
+async function pushLocalToFirebaseIfEmpty() {
+  if (!state.fb.enabled) return;
+  try {
+    const snap = await getDocs(collection(state.fb.db, 'products'));
+    if (!snap.empty) return; // remote has data, do not overwrite
+    const localProducts = LS.get('products', []);
+    const localCats = LS.get('categories', []);
+    const localCust = LS.get('customers', []);
+    const localSales = LS.get('sales', []);
+    const localPays = LS.get('customerPayments', []);
+    if (!localProducts.length && !localCats.length && !localCust.length && !localSales.length) return;
+    const batch = writeBatch(state.fb.db);
+    localProducts.forEach(p => batch.set(doc(state.fb.db, 'products', p.id), p));
+    localCats.forEach(c => batch.set(doc(state.fb.db, 'categories', c.id), c));
+    localCust.forEach(c => batch.set(doc(state.fb.db, 'customers', c.id), c));
+    localSales.forEach(s => batch.set(doc(state.fb.db, 'sales', s.id), s));
+    localPays.forEach(p => batch.set(doc(state.fb.db, 'customerPayments', p.id), p));
+    await batch.commit();
+    showToast('Yerel veriler buluta yüklendi', 'success');
+  } catch (e) {
+    console.warn('Push local to FB failed', e);
+  }
+}
+
+function subscribeFirestore() {
+  // Clear old
+  state.fb.unsubs.forEach(u => { try { u(); } catch(_){} });
+  state.fb.unsubs = [];
+  const collections = ['products','categories','customers','sales','customerPayments'];
+  collections.forEach(name => {
+    const u = onSnapshot(collection(state.fb.db, name), (snap) => {
+      const arr = [];
+      snap.forEach(d => arr.push(d.data()));
+      // Sort deterministically to prevent UI flickering
+      if (name === 'products' || name === 'categories' || name === 'customers') {
+        arr.sort((a, b) => (a.name || '').localeCompare(b.name || '', 'tr'));
+      } else {
+        arr.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      }
+      state[name] = arr;
+      LS.set(name, arr);
+      reRenderCurrent();
+    }, (err) => {
+      console.error('FS sub err', name, err);
+    });
+    state.fb.unsubs.push(u);
+  });
+}
+
+// ============ DATA LAYER (FB or LS) ============
+async function saveDoc(coll, obj) {
+  if (state.fb.enabled) {
+    // Optimistic local update — prevents stale data until snapshot arrives
+    const arr = [...(state[coll] || [])];
+    const idx = arr.findIndex(x => x.id === obj.id);
+    if (idx >= 0) arr[idx] = obj; else arr.push(obj);
+    state[coll] = arr;
+    LS.set(coll, arr);
+    await setDoc(doc(state.fb.db, coll, obj.id), obj);
+  } else {
+    const arr = state[coll] || [];
+    const idx = arr.findIndex(x => x.id === obj.id);
+    if (idx >= 0) arr[idx] = obj; else arr.push(obj);
+    state[coll] = arr;
+    LS.set(coll, arr);
+    reRenderCurrent();
+  }
+}
+async function removeDoc(coll, id) {
+  if (state.fb.enabled) {
+    await deleteDoc(doc(state.fb.db, coll, id));
+  } else {
+    state[coll] = (state[coll] || []).filter(x => x.id !== id);
+    LS.set(coll, state[coll]);
+    reRenderCurrent();
+  }
+}
+async function batchSave(items) {
+  // items = [{coll, obj}]
+  if (state.fb.enabled) {
+    // Optimistic local update — prevents stale-stock race conditions
+    items.forEach(({coll, obj}) => {
+      const arr = [...(state[coll] || [])];
+      const idx = arr.findIndex(x => x.id === obj.id);
+      if (idx >= 0) arr[idx] = obj; else arr.push(obj);
+      state[coll] = arr;
+      LS.set(coll, arr);
+    });
+    const b = writeBatch(state.fb.db);
+    items.forEach(({coll, obj}) => b.set(doc(state.fb.db, coll, obj.id), obj));
+    await b.commit();
+  } else {
+    items.forEach(({coll, obj}) => {
+      const arr = state[coll] || [];
+      const idx = arr.findIndex(x => x.id === obj.id);
+      if (idx >= 0) arr[idx] = obj; else arr.push(obj);
+      state[coll] = arr;
+      LS.set(coll, arr);
+    });
+    reRenderCurrent();
+  }
+}
+
+function loadLocalData() {
+  state.products = LS.get('products', []);
+  state.categories = LS.get('categories', []);
+  state.customers = LS.get('customers', []);
+  state.sales = LS.get('sales', []);
+  state.customerPayments = LS.get('customerPayments', []);
+}
+
+// ============ SESSION ============
+function getSession() {
+  const s = LS.get('session');
+  if (!s) return null;
+  if (s.expiresAt && Date.now() > s.expiresAt) {
+    LS.set('session', null);
+    return null;
+  }
+  return s;
+}
+function setSession(s) {
+  state.session = s;
+  LS.set('session', s);
+  document.body.classList.remove('role-admin', 'role-cashier');
+  if (s) document.body.classList.add('role-' + s.role);
+}
+function clearSession() {
+  LS.set('session', null);
+  state.session = null;
+  document.body.classList.remove('role-admin', 'role-cashier');
+}
+
+// ============ LOGIN ============
+let pendingRole = null;
+let pendingCashierIndex = 1;
+
+function initLogin() {
+  $$('.role-btn').forEach(b => b.onclick = () => {
+    pendingRole = b.dataset.role;
+    $('#roleSelector').classList.add('hidden');
+    if (pendingRole === 'cashier') {
+      $('#cashierSelector').classList.remove('hidden');
+    }
+    $('#passwordSection').classList.remove('hidden');
+    $('#passwordInput').value = '';
+    $('#passwordInput').focus();
+    $('#loginError').classList.add('hidden');
+  });
+  $('#backRoleBtn').onclick = () => {
+    pendingRole = null;
+    $('#roleSelector').classList.remove('hidden');
+    $('#cashierSelector').classList.add('hidden');
+    $('#passwordSection').classList.add('hidden');
+    $('#loginError').classList.add('hidden');
+  };
+  $('#passwordInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') tryLogin();
+  });
+  $('#loginBtn').onclick = tryLogin;
+}
+
+async function tryLogin() {
+  const pw = $('#passwordInput').value;
+  const hash = await hashPassword(pw);
+  if (pendingRole === 'admin') {
+    if (hash === state.settings.adminPassword) {
+      setSession({
+        role: 'admin',
+        cashierName: 'Yönetim',
+        cashierIndex: 0,
+        loginTime: Date.now(),
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000
+      });
+      enterApp();
+      return;
+    }
+  } else if (pendingRole === 'cashier') {
+    const idx = parseInt($('#cashierSelect').value, 10);
+    pendingCashierIndex = idx;
+    const expected = state.settings[`cashier${idx}Password`];
+    if (hash === expected) {
+      const name = state.settings[`cashier${idx}Name`] || ('Kasiyer ' + idx);
+      setSession({
+        role: 'cashier',
+        cashierName: name,
+        cashierIndex: idx,
+        loginTime: Date.now(),
+        expiresAt: Date.now() + 12 * 60 * 60 * 1000
+      });
+      enterApp();
+      return;
+    }
+  }
+  $('#loginError').classList.remove('hidden');
+  $('#passwordInput').value = '';
+  $('#passwordInput').focus();
+}
+
+function enterApp() {
+  $('#loginScreen').classList.add('hidden');
+  $('#app').classList.remove('hidden');
+  $('#currentUserLabel').textContent = state.session.cashierName + ' (' + (state.session.role === 'admin' ? 'Yönetim' : 'Kasiyer') + ')';
+  buildMobileNav();
+  updateLowStockBadge();
+  // default view
+  if (state.session.role === 'cashier') {
+    setView('pos');
+  } else {
+    setView('pos');
+  }
+}
+
+function buildMobileNav() {
+  const items = [
+    { v: 'pos', l: 'Kasa', admin: false },
+    { v: 'stock', l: 'Stok', admin: false },
+    { v: 'customers', l: 'Müşteriler', admin: true },
+    { v: 'reports', l: 'Raporlar', admin: false },
+    { v: 'settings', l: 'Ayarlar', admin: true }
+  ];
+  $('#mobileNav').innerHTML = items.map(it =>
+    `<button data-view="${it.v}" class="mob-side-item ${it.admin ? 'admin-only' : ''} w-full text-left px-3 py-2.5 rounded-lg hover:bg-gray-100">${it.l}</button>`
+  ).join('');
+  $$('#mobileNav .mob-side-item').forEach(b => {
+    b.onclick = () => { setView(b.dataset.view); closeMobileSidebar(); };
+  });
+}
+
+function openMobileSidebar() { $('#mobileSidebar').classList.remove('hidden'); }
+function closeMobileSidebar() { $('#mobileSidebar').classList.add('hidden'); }
+
+// ============ VIEW ROUTER ============
+function setView(v) {
+  // Guard admin only
+  if ((v === 'customers' || v === 'settings') && state.session.role !== 'admin') {
+    v = 'pos';
+  }
+  state.view = v;
+  // highlight
+  $$('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === v));
+  $$('.mob-nav-item').forEach(n => {
+    if (n.dataset.view === v) {
+      n.classList.add('text-primary');
+      n.style.color = 'var(--color-primary)';
+    } else {
+      n.classList.remove('text-primary');
+      n.style.color = '';
+    }
+  });
+  renderView();
+}
+
+function reRenderCurrent() {
+  if (!state.session) return;
+  updateLowStockBadge();
+  renderView();
+}
+
+function renderView() {
+  const c = $('#viewContainer');
+  if (!c) return;
+  // destroy charts on view change
+  Object.values(state.charts).forEach(ch => { try { ch.destroy(); } catch(_){} });
+  state.charts = {};
+  switch (state.view) {
+    case 'pos': c.innerHTML = renderPOS(); bindPOS(); break;
+    case 'stock': c.innerHTML = renderStock(); bindStock(); break;
+    case 'customers': c.innerHTML = renderCustomers(); bindCustomers(); break;
+    case 'reports': c.innerHTML = renderReports(); bindReports(); break;
+    case 'settings': c.innerHTML = renderSettings(); bindSettings(); break;
+  }
+}
+
+// ============ POS VIEW ============
+function renderPOS() {
+  const isAdmin = state.session.role === 'admin';
+  // today summary
+  const today = todayBounds();
+  const userFilter = state.session.role === 'cashier' ? state.session.cashierName : null;
+  const todaySales = state.sales.filter(s =>
+    !s.cancelled && s.createdAt >= today.start && s.createdAt < today.end &&
+    (!userFilter || s.cashierName === userFilter)
+  );
+  const totalRev = todaySales.reduce((a, s) => a + (s.total || 0), 0);
+  const totalProfit = todaySales.reduce((a, s) => a + (s.profit || 0), 0);
+  const totalCount = todaySales.length;
+  // Sadece adı/ID'si olan satışları say; tamamen anonim satışlar dahil değil
+  const uniqueCust = new Set(
+    todaySales.filter(s => s.customerId || (s.customerName && s.customerName.trim()))
+              .map(s => s.customerId || s.customerName.trim().toLowerCase())
+  ).size;
+
+  return `
+    <div class="p-3 md:p-4">
+      <!-- Summary cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+        ${summaryCard('Bugünkü Satış', totalCount + ' adet', 'bg-blue-50', 'text-blue-700')}
+        ${summaryCard('Gelir', fmt(totalRev), 'bg-green-50', 'text-green-700')}
+        ${isAdmin ? summaryCard('Kâr', fmt(totalProfit), 'bg-orange-50', 'text-orange-700') : summaryCard('Vardiya', state.session.cashierName, 'bg-orange-50', 'text-orange-700')}
+        ${summaryCard('Müşteri', uniqueCust + ' kişi', 'bg-purple-50', 'text-purple-700')}
+      </div>
+
+      ${isAdmin ? `
+      <!-- Top 10 Müşteri (Admin) -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">🏆 En Çok Alışveriş Yapan 10 Müşteri <span class="text-xs font-normal text-gray-400">(tüm zamanlar)</span></h3>
+        <div id="top10Customers" class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-gray-400 text-xs border-b">
+              <th class="pb-2">#</th><th class="pb-2">Müşteri</th><th class="pb-2">Telefon</th>
+              <th class="pb-2 text-center">Alışveriş</th><th class="pb-2 text-right">Toplam Harcama</th>
+            </tr></thead>
+            <tbody id="top10Body"></tbody>
+          </table>
+          <div id="top10Empty" class="hidden text-center py-4 text-gray-400 text-sm">Henüz satış kaydı yok</div>
+        </div>
+      </div>` : ''}
+
+      ${(()=>{
+        const kritik = state.products.filter(p => p.stock <= (p.minStock || 0) && (p.minStock || 0) > 0);
+        if (!kritik.length) return '';
+        return `
+        <!-- Kritik Stok Uyarısı -->
+        <div class="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">⚠️</span>
+            <h3 class="font-semibold text-red-800">Kritik Stok Uyarısı</h3>
+            <span class="ml-auto text-xs bg-red-200 text-red-800 font-bold px-2 py-0.5 rounded-full">${kritik.length} ürün</span>
+          </div>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+            ${kritik.map(p=>`
+              <div class="bg-white border border-red-200 rounded-lg px-3 py-2 text-sm">
+                <div class="font-medium text-gray-800 truncate">${esc(p.name)}</div>
+                <div class="text-red-600 font-bold">${p.stock} adet kaldı</div>
+                <div class="text-xs text-gray-400">Min: ${p.minStock}</div>
+              </div>`).join('')}
+          </div>
+        </div>`;
+      })()}
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <!-- Left: search + results -->
+        <div class="lg:col-span-2 bg-white rounded-xl shadow-sm p-4">
+          <div class="flex items-center gap-2 mb-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center bg-primary text-white">&#x1F50D;</div>
+            <div class="flex-1">
+              <input id="posSearch" type="text" placeholder="Ürün adı veya barkod (Enter ile ekle)" class="w-full border-2 border-gray-200 rounded-lg p-3" autocomplete="off" value="${esc(state.posSearch || '')}" />
+            </div>
+          </div>
+          <div id="posResults" class="space-y-2 max-h-[55vh] overflow-y-auto"></div>
+        </div>
+
+        <!-- Right: cart -->
+        <div class="bg-white rounded-xl shadow-sm p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-bold text-lg">Sepet</h3>
+            <button id="clearCartBtn" class="text-xs text-red-600">Temizle</button>
+          </div>
+          <div id="cartList" class="flex-1 space-y-2 overflow-y-auto max-h-[40vh] mb-3"></div>
+
+          <div class="space-y-1 text-sm border-t pt-3">
+            <div class="flex justify-between"><span>Ara Toplam:</span><span id="subTotal">0,00 TL</span></div>
+            ${isAdmin ? `
+            <div class="flex justify-between items-center admin-only">
+              <span>İndirim (TL):</span>
+              <input id="discountInput" type="number" min="0" step="0.01" value="${state.cartDiscount || 0}" class="border rounded w-24 px-2 py-1 text-right" />
+            </div>` : ''}
+            <div class="flex justify-between items-center">
+              <label class="flex items-center gap-1"><input type="checkbox" id="vatToggle" ${state.cartVatEnabled ? 'checked' : ''} /> KDV (%<input id="vatRate" type="number" min="0" max="50" value="${state.cartVatRate}" class="border rounded w-12 px-1 ml-1 text-right" />)</label>
+              <span id="vatAmount">0,00 TL</span>
+            </div>
+            <div class="flex justify-between text-lg font-bold border-t pt-2"><span>Toplam:</span><span id="grandTotal" class="text-primary">0,00 TL</span></div>
+          </div>
+
+          <div class="mt-3">
+            <div class="grid grid-cols-3 gap-2 mb-2">
+              <button data-pay="cash" class="pay-btn border-2 rounded-lg py-2 text-sm font-semibold">Nakit</button>
+              <button data-pay="card" class="pay-btn border-2 rounded-lg py-2 text-sm font-semibold">Kart</button>
+              <button data-pay="credit" class="pay-btn border-2 rounded-lg py-2 text-sm font-semibold">Veresiye</button>
+            </div>
+            <!-- Müşteri Bilgileri -->
+            <div class="mb-2 border rounded-lg p-2 bg-gray-50 space-y-1">
+              <div class="text-xs font-semibold text-gray-500 mb-1">👤 Müşteri Bilgileri <span class="font-normal text-gray-400">(opsiyonel)</span></div>
+              <div class="relative">
+                <input type="text" id="cartCustomerName" placeholder="Ad Soyad" value="${esc(state.cartCustomerName)}"
+                  autocomplete="off"
+                  class="w-full border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary" />
+                <div id="custAutoList" class="hidden absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto text-sm"></div>
+              </div>
+              <input type="tel" id="cartCustomerPhone" placeholder="📞 Telefon" value="${esc(state.cartCustomerPhone)}"
+                class="w-full border rounded-lg px-2 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary" />
+              <div id="custLinkedBadge" class="${state.cartCustomerId ? '' : 'hidden'} text-xs text-green-700 bg-green-50 rounded px-2 py-0.5">✓ Kayıtlı müşteri bağlandı</div>
+            </div>
+            <div id="customerSelectWrap" class="hidden mb-2">
+              <div class="text-xs text-gray-500 mb-1">Veresiye hesabı:</div>
+              <select id="customerSelect" class="w-full border rounded-lg p-2 text-sm">
+                <option value="">Müşteri seçin...</option>
+                ${state.customers.map(c => `<option value="${c.id}" ${state.cartCustomerId === c.id ? 'selected' : ''}>${esc(c.name)}${c.phone ? ' — ' + esc(c.phone) : ''}</option>`).join('')}
+              </select>
+            </div>
+            <button id="completeSaleBtn" class="btn-primary w-full rounded-lg py-3 font-bold disabled:opacity-50" disabled>Satışı Tamamla</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function summaryCard(label, val, bg, color) {
+  return `
+    <div class="rounded-xl ${bg} p-3">
+      <div class="text-xs ${color} font-medium">${label}</div>
+      <div class="text-lg md:text-xl font-bold mt-1 ${color}">${val}</div>
+    </div>
+  `;
+}
+function bindPOS() {
+  const search = $('#posSearch');
+  const results = $('#posResults');
+  function renderResults(term) {
+    const t = (term || '').trim().toLowerCase();
+    let list = state.products;
+    if (t) {
+      list = state.products.filter(p =>
+        (p.name || '').toLowerCase().includes(t) ||
+        (p.barcode || '').toLowerCase().includes(t)
+      );
+    }
+    list = list.slice(0, 30);
+    if (!list.length) {
+      results.innerHTML = `<div class="text-center text-gray-400 py-6">Ürün bulunamadı</div>`;
+      return;
+    }
+    results.innerHTML = list.map(p => {
+      const low = p.stock <= (p.minStock || 0);
+      const cat = state.categories.find(c => c.id === p.category);
+      return `
+        <div class="flex items-center gap-3 border rounded-lg p-3 hover:border-primary cursor-pointer" data-pid="${p.id}">
+          <div class="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-gray-500">&#x1F4E6;</div>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium truncate">${esc(p.name)}</div>
+            <div class="text-xs text-gray-500 flex gap-2 flex-wrap">
+              <span>${esc(cat ? cat.name : 'Genel')}</span>
+              ${p.barcode ? `<span>BC: ${esc(p.barcode)}</span>` : ''}
+              <span class="${low ? 'text-red-600 font-semibold' : ''}">Stok: ${p.stock}</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="font-bold text-primary">${fmt(p.sellPrice)}</div>
+            <button data-add="${p.id}" class="text-xs btn-primary px-2 py-1 rounded mt-1">Ekle</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+    $$('#posResults [data-add]').forEach(b => b.onclick = (e) => { e.stopPropagation(); addToCart(b.dataset.add); });
+    $$('#posResults [data-pid]').forEach(b => b.onclick = () => addToCart(b.dataset.pid));
+  }
+  renderResults('');
+  search.addEventListener('input', (e) => { state.posSearch = e.target.value; renderResults(e.target.value); });
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const t = search.value.trim();
+      if (!t) return;
+      // try barcode exact
+      const exact = state.products.find(p => (p.barcode || '').toLowerCase() === t.toLowerCase());
+      if (exact) { addToCart(exact.id); search.value = ''; renderResults(''); return; }
+      // first result
+      const list = state.products.filter(p =>
+        (p.name || '').toLowerCase().includes(t.toLowerCase()) ||
+        (p.barcode || '').toLowerCase().includes(t.toLowerCase())
+      );
+      if (list.length) { addToCart(list[0].id); search.value = ''; renderResults(''); }
+    }
+  });
+
+  function clearCustomerFields() {
+    state.cartCustomerName = ''; state.cartCustomerPhone = ''; state.cartCustomerId = null;
+    if ($('#cartCustomerName'))  $('#cartCustomerName').value  = '';
+    if ($('#cartCustomerPhone')) $('#cartCustomerPhone').value = '';
+    if ($('#custLinkedBadge'))   $('#custLinkedBadge').classList.add('hidden');
+    if ($('#custAutoList'))      { $('#custAutoList').innerHTML = ''; $('#custAutoList').classList.add('hidden'); }
+    if ($('#customerSelect'))    $('#customerSelect').value = '';
+  }
+  $('#clearCartBtn').onclick = () => { state.cart = []; state.cartDiscount = 0; clearCustomerFields(); renderCart(); };
+
+  // Autocomplete — müşteri adı arama
+  const custNameInput  = $('#cartCustomerName');
+  const custPhoneInput = $('#cartCustomerPhone');
+  const autoList       = $('#custAutoList');
+  function linkCustomer(c) {
+    state.cartCustomerName  = c.name;
+    state.cartCustomerPhone = c.phone || '';
+    state.cartCustomerId    = c.id;
+    custNameInput.value  = c.name;
+    custPhoneInput.value = c.phone || '';
+    autoList.classList.add('hidden');
+    $('#custLinkedBadge').classList.remove('hidden');
+    // veresiye seçiliyse dropdown'ı da güncelle
+    const sel = $('#customerSelect');
+    if (sel) sel.value = c.id;
+    updateCompleteBtn();
+  }
+  function showAutoList(term) {
+    const t = term.trim().toLowerCase().replace(/\s+/g, ' ');
+    const tDigits = t.replace(/\D/g,'');
+    const matches = t.length < 1 ? [] : state.customers.filter(c =>
+      c.name.toLowerCase().replace(/\s+/g,' ').startsWith(t) ||
+      (tDigits.length > 0 && (c.phone || '').replace(/\D/g,'').startsWith(tDigits))
+    ).slice(0, 8);
+    if (!matches.length) { autoList.classList.add('hidden'); return; }
+    autoList.innerHTML = matches.map(c => `
+      <div class="px-3 py-2 cursor-pointer rounded-lg text-gray-800"
+           onmouseover="this.style.background='var(--color-primary)';this.style.color='#fff'"
+           onmouseout="this.style.background='';this.style.color=''"
+           data-cid="${c.id}">
+        <span class="font-medium">${esc(c.name)}</span>
+        ${c.phone ? `<span class="text-xs ml-2 opacity-70">${esc(c.phone)}</span>` : ''}
+      </div>`).join('');
+    autoList.classList.remove('hidden');
+    $$('[data-cid]', autoList).forEach(el => el.onclick = () => {
+      const c = state.customers.find(x => x.id === el.dataset.cid);
+      if (c) linkCustomer(c);
+    });
+  }
+  custNameInput.addEventListener('input', e => {
+    state.cartCustomerName = e.target.value;
+    state.cartCustomerId = null;
+    $('#custLinkedBadge').classList.add('hidden');
+    showAutoList(e.target.value);
+  });
+  custNameInput.addEventListener('blur', () => setTimeout(() => autoList.classList.add('hidden'), 150));
+  custPhoneInput.addEventListener('input', e => {
+    state.cartCustomerPhone = e.target.value;
+    // telefon ile eşleştir
+    const match = state.customers.find(c => c.phone && c.phone.replace(/\D/g,'') === e.target.value.replace(/\D/g,''));
+    if (match) linkCustomer(match); else { state.cartCustomerId = null; $('#custLinkedBadge').classList.add('hidden'); }
+  });
+
+  // Top 10 müşteri tablosunu doldur (admin dashboard)
+  if (state.session.role === 'admin') fillTop10Customers();
+
+  const di = $('#discountInput');
+  if (di) di.addEventListener('input', () => {
+    const sub = state.cart.reduce((a, c) => a + c.sellPrice * c.qty, 0);
+    let v = parseFloat(di.value) || 0;
+    if (v < 0) v = 0;
+    if (v > sub) { v = sub; di.value = v; }
+    state.cartDiscount = v;
+    renderCart();
+  });
+  $('#vatToggle').addEventListener('change', (e) => { state.cartVatEnabled = e.target.checked; renderCart(); });
+  $('#vatRate').addEventListener('input', (e) => { state.cartVatRate = parseFloat(e.target.value) || 0; renderCart(); });
+
+  $$('.pay-btn').forEach(b => b.onclick = () => {
+    state.currentPay = b.dataset.pay;
+    $$('.pay-btn').forEach(x => { x.classList.remove('bg-primary','text-white','border-primary'); x.style.borderColor=''; x.style.backgroundColor=''; x.style.color=''; });
+    b.classList.add('bg-primary','text-white','border-primary');
+    b.style.backgroundColor = 'var(--color-primary)';
+    b.style.color = 'white';
+    b.style.borderColor = 'var(--color-primary)';
+    $('#customerSelectWrap').classList.toggle('hidden', state.currentPay !== 'credit');
+    updateCompleteBtn();
+  });
+  $('#customerSelect').addEventListener('change', updateCompleteBtn);
+  $('#completeSaleBtn').onclick = onCompleteSale;
+
+  // Restore selected payment button from state (after re-render)
+  if (state.currentPay) {
+    const activeBtn = $$(`.pay-btn`).find(b => b.dataset.pay === state.currentPay);
+    if (activeBtn) {
+      activeBtn.classList.add('bg-primary','text-white','border-primary');
+      activeBtn.style.backgroundColor = 'var(--color-primary)';
+      activeBtn.style.color = 'white';
+      activeBtn.style.borderColor = 'var(--color-primary)';
+    }
+    $('#customerSelectWrap').classList.toggle('hidden', state.currentPay !== 'credit');
+  }
+
+  renderCart();
+}
+
+function addToCart(productId) {
+  const p = state.products.find(x => x.id === productId);
+  if (!p) return;
+  if (p.stock <= 0) { showToast('Stokta yok: ' + p.name, 'warning'); return; }
+  if (!p.sellPrice || p.sellPrice <= 0) { showToast(p.name + ' için satış fiyatı tanımlı değil', 'warning'); return; }
+  const ex = state.cart.find(c => c.productId === productId);
+  if (ex) {
+    if (ex.qty + 1 > p.stock) { showToast('Stok yetersiz', 'warning'); return; }
+    ex.qty += 1;
+  } else {
+    state.cart.push({ productId, name: p.name, sellPrice: p.sellPrice, buyPrice: p.buyPrice, qty: 1 });
+  }
+  renderCart();
+}
+
+function renderCart() {
+  const list = $('#cartList');
+  if (!list) return;
+  if (!state.cart.length) {
+    list.innerHTML = `<div class="text-center text-gray-400 py-6 text-sm">Sepet boş</div>`;
+  } else {
+    list.innerHTML = state.cart.map((c, i) => `
+      <div class="flex items-center gap-2 border-b pb-2">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-medium truncate">${esc(c.name)}</div>
+          <div class="text-xs text-gray-500">${fmt(c.sellPrice)} x ${c.qty}</div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button data-act="dec" data-i="${i}" class="w-6 h-6 border rounded">-</button>
+          <span class="w-8 text-center text-sm">${c.qty}</span>
+          <button data-act="inc" data-i="${i}" class="w-6 h-6 border rounded">+</button>
+          <button data-act="del" data-i="${i}" class="ml-1 text-red-600 text-lg">&times;</button>
+        </div>
+      </div>
+    `).join('');
+    $$('#cartList button').forEach(b => b.onclick = () => {
+      const i = parseInt(b.dataset.i, 10);
+      const item = state.cart[i];
+      const p = state.products.find(x => x.id === item.productId);
+      if (b.dataset.act === 'inc') {
+        if (p && item.qty + 1 > p.stock) { showToast('Stok yetersiz', 'warning'); return; }
+        item.qty += 1;
+      } else if (b.dataset.act === 'dec') {
+        item.qty -= 1; if (item.qty <= 0) state.cart.splice(i, 1);
+      } else if (b.dataset.act === 'del') {
+        state.cart.splice(i, 1);
+      }
+      renderCart();
+    });
+  }
+  const sub = state.cart.reduce((a, c) => a + c.sellPrice * c.qty, 0);
+  const afterDisc = Math.max(0, sub - state.cartDiscount);
+  const vat = state.cartVatEnabled ? afterDisc * (state.cartVatRate / 100) : 0;
+  const grand = afterDisc + vat;
+  $('#subTotal').textContent = fmt(sub);
+  $('#vatAmount').textContent = fmt(vat);
+  $('#grandTotal').textContent = fmt(grand);
+  updateCompleteBtn();
+}
+
+function updateCompleteBtn() {
+  const btn = $('#completeSaleBtn');
+  if (!btn) return;
+  let ok = state.cart.length > 0 && state.currentPay;
+  if (state.currentPay === 'credit') {
+    const dd       = $('#customerSelect');
+    const hasDD    = dd && dd.value;
+    const hasLinked = !!state.cartCustomerId;
+    const typedName  = (state.cartCustomerName  || '').trim();
+    const typedPhone = (state.cartCustomerPhone || '').replace(/\D/g,'');
+    const hasTyped   = typedName.length >= 2 || typedPhone.length >= 7;
+    if (!hasDD && !hasLinked && !hasTyped) ok = false;
+  }
+  btn.disabled = !ok;
+}
+
+async function onCompleteSale() {
+  if (!state.cart.length || !state.currentPay) return;
+  const creditSelectId = state.currentPay === 'credit' ? ($('#customerSelect') ? $('#customerSelect').value : '') : '';
+  if (state.currentPay === 'credit' && !creditSelectId && !state.cartCustomerId) { showToast('Veresiye için müşteri seçin veya bilgi girin', 'warning'); return; }
+
+  const enteredName  = (state.cartCustomerName  || '').trim();
+  const enteredPhone = (state.cartCustomerPhone || '').trim();
+
+  // Mevcut müşteri ID'si — önce state, sonra veresiye dropdown
+  let resolvedCustomerId = state.cartCustomerId || creditSelectId || null;
+
+  // Ad normalizasyonu — büyük/küçük harf + fazla boşluk farkını ortadan kaldır
+  const normName = n => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const normPhone = p => (p || '').replace(/\D/g, '');
+
+  // Yeni müşteri kaydı — ad ya da telefon girilmişse ve ID bağlı değilse
+  if ((enteredName || enteredPhone) && !resolvedCustomerId) {
+    const byPhone = enteredPhone ? state.customers.find(c => normPhone(c.phone) === normPhone(enteredPhone) && normPhone(enteredPhone).length > 0) : null;
+    const byName  = enteredName  ? state.customers.find(c => normName(c.name) === normName(enteredName)) : null;
+    const matched = byPhone || byName;
+    if (matched) {
+      resolvedCustomerId = matched.id;
+      // Eğer mevcut kayıtta telefon yoktu, şimdi gelen telefonu ekle
+      if (enteredPhone && !matched.phone) {
+        const updated = { ...matched, phone: enteredPhone };
+        await saveDoc('customers', updated);
+        showToast(matched.name + ' bilgileri güncellendi', 'success');
+      }
+    } else if (enteredName) {
+      // Gerçekten yeni müşteri — yalnızca kesin eşleşme yoksa kaydet
+      const newCust = { id: uid(), name: enteredName, phone: enteredPhone, balance: 0, createdAt: Date.now() };
+      await saveDoc('customers', newCust);
+      resolvedCustomerId = newCust.id;
+      showToast(enteredName + ' müşteri listesine eklendi', 'success');
+    }
+  }
+  const freeCustomerName = enteredName || (resolvedCustomerId ? (state.customers.find(c => c.id === resolvedCustomerId) || {}).name || '' : '');
+  // recompute
+  const sub = state.cart.reduce((a, c) => a + c.sellPrice * c.qty, 0);
+  const afterDisc = Math.max(0, sub - state.cartDiscount);
+  const vat = state.cartVatEnabled ? afterDisc * (state.cartVatRate / 100) : 0;
+  const grand = afterDisc + vat;
+  const profit = state.cart.reduce((a, c) => a + (c.sellPrice - (c.buyPrice || 0)) * c.qty, 0) - state.cartDiscount;
+  const sale = {
+    id: uid(),
+    items: state.cart.map(c => ({ productId: c.productId, name: c.name, qty: c.qty, sellPrice: c.sellPrice, buyPrice: c.buyPrice || 0 })),
+    subTotal: sub,
+    discount: state.cartDiscount,
+    vat,
+    vatRate: state.cartVatEnabled ? state.cartVatRate : 0,
+    total: grand,
+    profit,
+    paymentType: state.currentPay,
+    cashierName: state.session.cashierName,
+    customerId: resolvedCustomerId || null,
+    customerName: freeCustomerName,
+    customerPhone: enteredPhone || (resolvedCustomerId ? (state.customers.find(c => c.id === resolvedCustomerId) || {}).phone || '' : ''),
+    createdAt: Date.now(),
+    cancelled: false
+  };
+
+  // update stocks
+  const batchItems = [];
+  for (const it of sale.items) {
+    const p = state.products.find(x => x.id === it.productId);
+    if (p) {
+      p.stock = Math.max(0, (p.stock || 0) - it.qty);
+      batchItems.push({ coll: 'products', obj: { ...p } });
+    }
+  }
+  batchItems.push({ coll: 'sales', obj: sale });
+  if (sale.paymentType === 'credit' && resolvedCustomerId) {
+    const cust = state.customers.find(c => c.id === resolvedCustomerId);
+    if (cust) {
+      cust.balance = (cust.balance || 0) + grand;
+      batchItems.push({ coll: 'customers', obj: { ...cust } });
+    }
+  }
+  try {
+    await batchSave(batchItems);
+    showReceipt(sale);
+    // Stok uyarısı — satılan ürünlerden kritik seviyeye düşenler
+    const kritikUyari = sale.items
+      .map(it => state.products.find(p => p.id === it.productId))
+      .filter(p => p && p.minStock > 0 && p.stock <= p.minStock);
+    if (kritikUyari.length === 1) {
+      showToast(`⚠️ ${kritikUyari[0].name}: kritik stok (${kritikUyari[0].stock} adet)`, 'warning');
+    } else if (kritikUyari.length > 1) {
+      showToast(`⚠️ ${kritikUyari.length} ürün kritik stok seviyesine düştü`, 'warning');
+    }
+    state.cart = []; state.cartDiscount = 0; state.cartCustomerName = ''; state.cartCustomerPhone = ''; state.cartCustomerId = null; state.currentPay = null;
+    if (!state.fb.enabled) renderView();
+  } catch (e) {
+    console.error(e);
+    showToast('Satış kaydedilemedi: ' + e.message, 'error');
+  }
+}
+
+function showReceipt(sale) {
+  const cust = sale.customerId ? state.customers.find(c => c.id === sale.customerId) : null;
+  const payLabel = { cash: 'Nakit', card: 'Kart', credit: 'Veresiye' }[sale.paymentType];
+  const html = `
+    <div class="p-6">
+      <div class="text-center mb-4">
+        <div class="text-2xl font-bold">${esc(state.settings.storeName || STORE_NAME_DEFAULT)}</div>
+        <div class="text-xs text-gray-500">${fmtDate(sale.createdAt)}</div>
+        <div class="text-xs text-gray-500">Fiş No: ${sale.id.slice(-8).toUpperCase()}</div>
+      </div>
+      <div class="border-t border-b py-3 space-y-1 text-sm">
+        ${sale.items.map(i => `
+          <div class="flex justify-between">
+            <span>${esc(i.name)} x${i.qty}</span>
+            <span>${fmt(i.sellPrice * i.qty)}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="mt-3 text-sm space-y-1">
+        <div class="flex justify-between"><span>Ara Toplam:</span><span>${fmt(sale.subTotal)}</span></div>
+        ${sale.discount ? `<div class="flex justify-between text-red-600"><span>İndirim:</span><span>-${fmt(sale.discount)}</span></div>` : ''}
+        ${sale.vat ? `<div class="flex justify-between"><span>KDV (%${sale.vatRate}):</span><span>${fmt(sale.vat)}</span></div>` : ''}
+        <div class="flex justify-between text-lg font-bold border-t pt-2"><span>Toplam:</span><span>${fmt(sale.total)}</span></div>
+        <div class="flex justify-between"><span>Ödeme:</span><span>${payLabel}</span></div>
+        ${sale.customerName ? `<div class="flex justify-between"><span>Müşteri:</span><span class="font-medium">${esc(sale.customerName)}</span></div>` : ''}
+        ${sale.customerPhone ? `<div class="flex justify-between text-gray-500 text-xs"><span>Telefon:</span><span>${esc(sale.customerPhone)}</span></div>` : ''}
+        <div class="flex justify-between"><span>Kasiyer:</span><span class="font-medium">${esc(sale.cashierName)}</span></div>
+      </div>
+      <div class="text-center mt-4 text-xs text-gray-500">Bizi tercih ettiğiniz için teşekkürler!</div>
+      <div class="flex gap-2 mt-5">
+        <button data-act="close" class="flex-1 border rounded-lg py-2">Kapat</button>
+        <button data-act="print" class="flex-1 btn-primary rounded-lg py-2">Yazdır</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html);
+  m.querySelector('[data-act="close"]').onclick = () => m.remove();
+  m.querySelector('[data-act="print"]').onclick = () => {
+    const printable = m.querySelector('.bg-white').innerHTML;
+    $('#printArea').innerHTML = printable;
+    $('#printArea').classList.remove('hidden');
+    window.print();
+    setTimeout(() => $('#printArea').classList.add('hidden'), 500);
+  };
+}
+
+// ============ STOCK VIEW ============
+function renderStock() {
+  const isAdmin = state.session.role === 'admin';
+  const cats = [{ id: 'all', name: 'Tümü' }, ...state.categories];
+  let list = state.products;
+  if (state.stockFilter !== 'all') list = list.filter(p => p.category === state.stockFilter);
+  return `
+    <div class="p-3 md:p-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 class="text-xl font-bold">Stok Yönetimi</h2>
+        ${isAdmin ? `
+        <div class="flex gap-2">
+          <button id="addCategoryBtn" class="admin-only border rounded-lg px-3 py-2 text-sm">+ Kategori</button>
+          <button id="addProductBtn" class="admin-only btn-primary rounded-lg px-3 py-2 text-sm font-semibold">+ Ürün Ekle</button>
+        </div>` : ''}
+      </div>
+
+      <div class="flex gap-2 overflow-x-auto pb-2 mb-3">
+        ${cats.map(c => `
+          <button data-cat="${c.id}" class="cat-tab whitespace-nowrap px-3 py-1.5 rounded-full text-sm border ${state.stockFilter === c.id ? 'btn-primary border-primary' : 'bg-white'}">${esc(c.name)}</button>
+        `).join('')}
+      </div>
+
+      ${list.length === 0 ? `<div class="text-center text-gray-400 py-10">Bu kategoride ürün yok</div>` : `
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        ${list.map(p => stockCard(p, isAdmin)).join('')}
+      </div>`}
+    </div>
+  `;
+}
+function stockCard(p, isAdmin) {
+  const cat = state.categories.find(c => c.id === p.category);
+  const low = p.stock <= (p.minStock || 0);
+  return `
+    <div class="bg-white rounded-xl p-3 border-2 ${low ? 'low-stock' : 'border-transparent'} shadow-sm">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold truncate">${esc(p.name)}</div>
+          <div class="text-xs text-gray-500">${esc(cat ? cat.name : 'Genel')}</div>
+          ${p.barcode ? `<div class="text-xs text-gray-400 mt-1">BC: ${esc(p.barcode)}</div>` : ''}
+        </div>
+        ${low ? `<span class="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Düşük</span>` : ''}
+      </div>
+      <div class="mt-3 space-y-1 text-sm">
+        ${isAdmin ? `<div class="flex justify-between text-gray-500 admin-only"><span>Alış:</span><span>${fmt(p.buyPrice)}</span></div>` : ''}
+        <div class="flex justify-between font-semibold"><span>Satış:</span><span class="text-primary">${fmt(p.sellPrice)}</span></div>
+        <div class="flex justify-between"><span>Stok:</span><span class="${low ? 'text-red-600 font-bold' : ''}">${p.stock} ${p.minStock ? `<span class="text-xs text-gray-400">/min ${p.minStock}</span>` : ''}</span></div>
+      </div>
+      ${isAdmin ? `
+      <div class="flex gap-2 mt-3 admin-only">
+        <button data-edit="${p.id}" class="flex-1 border rounded-lg py-1 text-sm">Düzenle</button>
+        <button data-del="${p.id}" class="border rounded-lg px-3 text-red-600">&#x1F5D1;</button>
+      </div>` : ''}
+    </div>
+  `;
+}
+function bindStock() {
+  $$('.cat-tab').forEach(b => b.onclick = () => { state.stockFilter = b.dataset.cat; renderView(); });
+  const ap = $('#addProductBtn'); if (ap) ap.onclick = () => openProductModal();
+  const ac = $('#addCategoryBtn'); if (ac) ac.onclick = () => openCategoryModal();
+  $$('[data-edit]').forEach(b => b.onclick = () => openProductModal(b.dataset.edit));
+  $$('[data-del]').forEach(b => b.onclick = () => {
+    confirmDialog('Bu ürünü silmek istediğinizden emin misiniz?', async () => {
+      await removeDoc('products', b.dataset.del);
+      showToast('Ürün silindi', 'success');
+    });
+  });
+}
+function openProductModal(productId) {
+  const p = productId ? state.products.find(x => x.id === productId) : null;
+  const html = `
+    <div class="p-5">
+      <h3 class="text-lg font-bold mb-3">${p ? 'Ürün Düzenle' : 'Yeni Ürün'}</h3>
+      <div class="space-y-3 text-sm">
+        <div><label class="block text-gray-600 mb-1">Ad</label><input id="pName" class="w-full border rounded-lg p-2" value="${p ? esc(p.name) : ''}" /></div>
+        <div><label class="block text-gray-600 mb-1">Kategori</label>
+          <select id="pCat" class="w-full border rounded-lg p-2">
+            <option value="">Genel</option>
+            ${state.categories.map(c => `<option value="${c.id}" ${p && p.category === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div><label class="block text-gray-600 mb-1">Barkod</label><input id="pBarcode" class="w-full border rounded-lg p-2" value="${p ? esc(p.barcode || '') : ''}" /></div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-gray-600 mb-1">Alış Fiyatı</label><input id="pBuy" type="number" step="0.01" class="w-full border rounded-lg p-2" value="${p ? p.buyPrice : ''}" /></div>
+          <div><label class="block text-gray-600 mb-1">Satış Fiyatı</label><input id="pSell" type="number" step="0.01" class="w-full border rounded-lg p-2" value="${p ? p.sellPrice : ''}" /></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div><label class="block text-gray-600 mb-1">Stok</label><input id="pStock" type="number" class="w-full border rounded-lg p-2" value="${p ? p.stock : 0}" /></div>
+          <div><label class="block text-gray-600 mb-1">Min Stok</label><input id="pMin" type="number" class="w-full border rounded-lg p-2" value="${p ? (p.minStock || 0) : 0}" /></div>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button data-act="cancel" class="flex-1 border rounded-lg py-2">Vazgeç</button>
+        <button data-act="save" class="flex-1 btn-primary rounded-lg py-2 font-semibold">Kaydet</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html);
+  m.querySelector('[data-act="cancel"]').onclick = () => m.remove();
+  m.querySelector('[data-act="save"]').onclick = async () => {
+    const name = m.querySelector('#pName').value.trim();
+    if (!name) { showToast('Ad gerekli', 'warning'); return; }
+    const obj = {
+      id: p ? p.id : uid(),
+      name,
+      category: m.querySelector('#pCat').value || null,
+      barcode: m.querySelector('#pBarcode').value.trim(),
+      buyPrice: parseFloat(m.querySelector('#pBuy').value) || 0,
+      sellPrice: parseFloat(m.querySelector('#pSell').value) || 0,
+      stock: parseInt(m.querySelector('#pStock').value, 10) || 0,
+      minStock: parseInt(m.querySelector('#pMin').value, 10) || 0
+    };
+    await saveDoc('products', obj);
+    showToast(p ? 'Ürün güncellendi' : 'Ürün eklendi', 'success');
+    m.remove();
+  };
+}
+function openCategoryModal() {
+  const html = `
+    <div class="p-5">
+      <h3 class="text-lg font-bold mb-3">Kategoriler</h3>
+      <div class="mb-3">
+        <div class="flex gap-2">
+          <input id="newCatName" class="flex-1 border rounded-lg p-2" placeholder="Yeni kategori adı" />
+          <button id="newCatAdd" class="btn-primary px-4 rounded-lg">Ekle</button>
+        </div>
+      </div>
+      <div id="catList" class="space-y-1 max-h-60 overflow-y-auto">
+        ${state.categories.map(c => `
+          <div class="flex items-center justify-between border rounded-lg px-3 py-2">
+            <span>${esc(c.name)}</span>
+            <button data-del-cat="${c.id}" class="text-red-600">&#x1F5D1;</button>
+          </div>
+        `).join('')}
+      </div>
+      <button id="catClose" class="w-full mt-4 border rounded-lg py-2">Kapat</button>
+    </div>
+  `;
+  const m = showModal(html);
+  m.querySelector('#catClose').onclick = () => m.remove();
+  m.querySelector('#newCatAdd').onclick = async () => {
+    const n = m.querySelector('#newCatName').value.trim();
+    if (!n) return;
+    await saveDoc('categories', { id: uid(), name: n });
+    showToast('Kategori eklendi', 'success');
+    m.remove();
+    openCategoryModal();
+  };
+  m.querySelectorAll('[data-del-cat]').forEach(b => b.onclick = () => {
+    confirmDialog('Kategoriyi silmek istediğinizden emin misiniz?', async () => {
+      await removeDoc('categories', b.dataset.delCat);
+      showToast('Kategori silindi', 'success');
+      m.remove();
+      openCategoryModal();
+    });
+  });
+}
+
+// ============ CUSTOMERS VIEW ============
+function renderCustomers() {
+  return `
+    <div class="p-3 md:p-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 class="text-xl font-bold">Müşteriler &amp; Veresiye</h2>
+        <button id="addCustBtn" class="btn-primary rounded-lg px-3 py-2 text-sm font-semibold">+ Müşteri Ekle</button>
+      </div>
+      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <table class="w-full text-sm">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="text-left p-3">Ad</th>
+              <th class="text-left p-3">Telefon</th>
+              <th class="text-right p-3">Bakiye</th>
+              <th class="p-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${state.customers.length === 0 ? `<tr><td colspan="4" class="p-6 text-center text-gray-400">Müşteri yok</td></tr>` : state.customers.map(c => `
+              <tr class="border-t hover:bg-gray-50">
+                <td class="p-3 font-medium">${esc(c.name)}</td>
+                <td class="p-3 text-gray-600">${esc(c.phone || '-')}</td>
+                <td class="p-3 text-right font-bold ${c.balance > 0 ? 'text-red-600' : 'text-green-600'}">${fmt(c.balance || 0)}</td>
+                <td class="p-3 text-right">
+                  <button data-detail="${c.id}" class="text-primary text-xs mr-2">Detay</button>
+                  <button data-pay="${c.id}" class="bg-green-600 text-white text-xs px-2 py-1 rounded">Tahsilat</button>
+                  <button data-edit-c="${c.id}" class="text-xs ml-1 border px-2 py-1 rounded">Düzenle</button>
+                  <button data-del-c="${c.id}" class="text-red-600 text-xs ml-1">&#x1F5D1;</button>
+                </td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+function bindCustomers() {
+  $('#addCustBtn').onclick = () => openCustomerModal();
+  $$('[data-edit-c]').forEach(b => b.onclick = () => openCustomerModal(b.dataset.editC));
+  $$('[data-del-c]').forEach(b => b.onclick = () => {
+    confirmDialog('Müşteriyi silmek istediğinizden emin misiniz?', async () => {
+      await removeDoc('customers', b.dataset.delC);
+      showToast('Müşteri silindi', 'success');
+    });
+  });
+  $$('[data-pay]').forEach(b => b.onclick = () => openPaymentModal(b.dataset.pay));
+  $$('[data-detail]').forEach(b => b.onclick = () => openCustomerDetail(b.dataset.detail));
+}
+function openCustomerModal(id) {
+  const c = id ? state.customers.find(x => x.id === id) : null;
+  const html = `
+    <div class="p-5">
+      <h3 class="text-lg font-bold mb-3">${c ? 'Müşteri Düzenle' : 'Yeni Müşteri'}</h3>
+      <div class="space-y-3 text-sm">
+        <div><label class="block text-gray-600 mb-1">Ad Soyad</label><input id="cName" class="w-full border rounded-lg p-2" value="${c ? esc(c.name) : ''}" /></div>
+        <div><label class="block text-gray-600 mb-1">Telefon</label><input id="cPhone" class="w-full border rounded-lg p-2" value="${c ? esc(c.phone || '') : ''}" /></div>
+        <div><label class="block text-gray-600 mb-1">${c ? 'Mevcut Bakiye' : 'Açılış Bakiyesi'}</label><input id="cBal" type="number" step="0.01" class="w-full border rounded-lg p-2 ${c ? 'bg-gray-50 cursor-not-allowed' : ''}" value="${c ? (c.balance || 0) : 0}" ${c ? 'readonly title="Bakiyeyi tahsilat veya satış üzerinden güncelleyin"' : ''} /></div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button data-act="cancel" class="flex-1 border rounded-lg py-2">Vazgeç</button>
+        <button data-act="save" class="flex-1 btn-primary rounded-lg py-2 font-semibold">Kaydet</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html);
+  m.querySelector('[data-act="cancel"]').onclick = () => m.remove();
+  m.querySelector('[data-act="save"]').onclick = async () => {
+    const name = m.querySelector('#cName').value.trim();
+    if (!name) { showToast('Ad gerekli', 'warning'); return; }
+    const obj = {
+      id: c ? c.id : uid(),
+      name,
+      phone: m.querySelector('#cPhone').value.trim(),
+      balance: parseFloat(m.querySelector('#cBal').value) || 0
+    };
+    await saveDoc('customers', obj);
+    showToast(c ? 'Müşteri güncellendi' : 'Müşteri eklendi', 'success');
+    m.remove();
+  };
+}
+function openPaymentModal(customerId) {
+  const c = state.customers.find(x => x.id === customerId);
+  if (!c) return;
+  const html = `
+    <div class="p-5">
+      <h3 class="text-lg font-bold mb-1">Tahsilat Al</h3>
+      <p class="text-sm text-gray-500 mb-3">${esc(c.name)} - Bakiye: <b>${fmt(c.balance)}</b></p>
+      <div class="space-y-3 text-sm">
+        <div><label class="block text-gray-600 mb-1">Tutar</label><input id="payAmt" type="number" step="0.01" class="w-full border rounded-lg p-2" /></div>
+        <div><label class="block text-gray-600 mb-1">Not</label><input id="payNote" class="w-full border rounded-lg p-2" placeholder="(opsiyonel)" /></div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button data-act="cancel" class="flex-1 border rounded-lg py-2">Vazgeç</button>
+        <button data-act="save" class="flex-1 bg-green-600 text-white rounded-lg py-2 font-semibold">Tahsil Et</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html);
+  m.querySelector('[data-act="cancel"]').onclick = () => m.remove();
+  m.querySelector('[data-act="save"]').onclick = async () => {
+    const amt = parseFloat(m.querySelector('#payAmt').value);
+    if (!amt || amt <= 0) { showToast('Geçerli tutar girin', 'warning'); return; }
+    const pay = {
+      id: uid(), customerId, amount: amt, note: m.querySelector('#payNote').value.trim(),
+      createdAt: Date.now(), cashierName: state.session.cashierName
+    };
+    const cust = { ...c, balance: (c.balance || 0) - amt };
+    await batchSave([
+      { coll: 'customerPayments', obj: pay },
+      { coll: 'customers', obj: cust }
+    ]);
+    showToast('Tahsilat alındı', 'success');
+    m.remove();
+  };
+}
+function openCustomerDetail(id) {
+  const c = state.customers.find(x => x.id === id);
+  if (!c) return;
+  const sales = state.sales.filter(s => s.customerId === id && !s.cancelled);
+  const pays = state.customerPayments.filter(p => p.customerId === id);
+  const html = `
+    <div class="p-5">
+      <h3 class="text-lg font-bold">${esc(c.name)}</h3>
+      <p class="text-sm text-gray-500 mb-3">${esc(c.phone || '')}</p>
+      <div class="grid grid-cols-3 gap-2 mb-4 text-center text-xs">
+        <div class="bg-blue-50 p-2 rounded">Toplam Satış<br><b class="text-base">${sales.length}</b></div>
+        <div class="bg-red-50 p-2 rounded">Bakiye<br><b class="text-base text-red-700">${fmt(c.balance)}</b></div>
+        <div class="bg-green-50 p-2 rounded">Tahsilat<br><b class="text-base text-green-700">${fmt(pays.reduce((a,p)=>a+p.amount,0))}</b></div>
+      </div>
+      <div class="mb-3">
+        <div class="font-semibold text-sm mb-1">Satış Geçmişi</div>
+        <div class="max-h-40 overflow-y-auto border rounded text-xs">
+          ${sales.length === 0 ? '<div class="p-2 text-gray-400 text-center">Kayıt yok</div>' : sales.map(s => `
+            <div class="flex justify-between border-b last:border-0 px-2 py-1"><span>${fmtDate(s.createdAt)}</span><span>${fmt(s.total)}</span></div>
+          `).join('')}
+        </div>
+      </div>
+      <div class="mb-3">
+        <div class="font-semibold text-sm mb-1">Tahsilat Geçmişi</div>
+        <div class="max-h-40 overflow-y-auto border rounded text-xs">
+          ${pays.length === 0 ? '<div class="p-2 text-gray-400 text-center">Kayıt yok</div>' : pays.map(p => `
+            <div class="flex justify-between border-b last:border-0 px-2 py-1"><span>${fmtDate(p.createdAt)} ${p.note ? '- ' + esc(p.note) : ''}</span><span class="text-green-700">${fmt(p.amount)}</span></div>
+          `).join('')}
+        </div>
+      </div>
+      <button data-close class="w-full border rounded-lg py-2">Kapat</button>
+    </div>
+  `;
+  const m = showModal(html, { maxW: 'max-w-lg' });
+  m.querySelector('[data-close]').onclick = () => m.remove();
+}
+
+// ============ REPORTS VIEW ============
+function renderReports() {
+  const isAdmin = state.session.role === 'admin';
+  if (!isAdmin) {
+    // Cashier: own shift sales only (today)
+    const t = todayBounds();
+    const own = state.sales.filter(s => !s.cancelled && s.cashierName === state.session.cashierName && s.createdAt >= t.start && s.createdAt < t.end);
+    return `
+      <div class="p-3 md:p-4">
+        <h2 class="text-xl font-bold mb-3">Vardiyam (Bugün)</h2>
+        <div class="grid grid-cols-2 gap-3 mb-3">
+          ${summaryCard('Satış Adedi', own.length, 'bg-blue-50','text-blue-700')}
+          ${summaryCard('Toplam Gelir', fmt(own.reduce((a,s)=>a+s.total,0)), 'bg-green-50','text-green-700')}
+        </div>
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+          <table class="w-full text-sm">
+            <thead class="bg-gray-50"><tr><th class="p-3 text-left">Saat</th><th class="p-3 text-left">Ürünler</th><th class="p-3 text-left">Ödeme</th><th class="p-3 text-right">Tutar</th></tr></thead>
+            <tbody>
+              ${own.length === 0 ? `<tr><td colspan="4" class="p-6 text-center text-gray-400">Kayıt yok</td></tr>` : own.slice().reverse().map(s => `
+                <tr class="border-t"><td class="p-2">${new Date(s.createdAt).toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})}</td>
+                <td class="p-2">${s.items.map(i=>esc(i.name)+' x'+i.qty).join(', ')}</td>
+                <td class="p-2">${({cash:'Nakit',card:'Kart',credit:'Veresiye'})[s.paymentType]}</td>
+                <td class="p-2 text-right font-semibold">${fmt(s.total)}</td></tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+  const bounds = getRangeBounds();
+  const filtered = state.sales.filter(s => s.createdAt >= bounds.start && s.createdAt < bounds.end);
+  const valid = filtered.filter(s => !s.cancelled);
+  const totalRev = valid.reduce((a,s)=>a+s.total,0);
+  const totalProfit = valid.reduce((a,s)=>a+(s.profit||0),0);
+  const margin = totalRev ? (totalProfit / totalRev * 100) : 0;
+  return `
+    <div class="p-3 md:p-4">
+      <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <h2 class="text-xl font-bold">Raporlar</h2>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex gap-1">
+            ${[
+              {k:'today',l:'Bugün'},
+              {k:'week',l:'Son 7 Gün'},
+              {k:'month',l:'Son 30 Gün'},
+              {k:'all',l:'Tümü'}
+            ].map(r => `<button data-quick="${r.k}" class="quick-btn px-2 py-1 rounded-lg text-xs bg-white border hover:bg-gray-50">${r.l}</button>`).join('')}
+          </div>
+          <div class="flex items-center gap-1 bg-white border rounded-lg px-2 py-1">
+            <span class="text-xs text-gray-500">📅</span>
+            <input type="date" id="reportFrom" value="${state.reportDateFrom}" class="text-sm border-0 outline-none" />
+            <span class="text-xs text-gray-400 mx-1">—</span>
+            <input type="date" id="reportTo" value="${state.reportDateTo}" class="text-sm border-0 outline-none" />
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        ${summaryCard('Satış Adedi', valid.length + ' adet', 'bg-blue-50','text-blue-700')}
+        ${summaryCard('Toplam Gelir', fmt(totalRev), 'bg-green-50','text-green-700')}
+        ${summaryCard('Toplam Kâr', fmt(totalProfit), 'bg-orange-50','text-orange-700')}
+        ${summaryCard('Kâr Marjı', margin.toFixed(1) + ' %', 'bg-purple-50','text-purple-700')}
+      </div>
+
+      <!-- Ödeme Tipi Özeti -->
+      <div class="grid grid-cols-3 gap-3 mb-4">
+        <div class="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-xl flex-shrink-0">💵</div>
+          <div>
+            <div class="text-xs text-gray-500 font-medium">Nakit</div>
+            <div class="text-base font-bold text-emerald-700" id="payStatCash">—</div>
+            <div class="text-xs text-gray-400" id="payStatCashCount">—</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl flex-shrink-0">💳</div>
+          <div>
+            <div class="text-xs text-gray-500 font-medium">Kart</div>
+            <div class="text-base font-bold text-blue-700" id="payStatCard">—</div>
+            <div class="text-xs text-gray-400" id="payStatCardCount">—</div>
+          </div>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-4 flex items-center gap-3">
+          <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl flex-shrink-0">📒</div>
+          <div>
+            <div class="text-xs text-gray-500 font-medium">Veresiye</div>
+            <div class="text-base font-bold text-amber-700" id="payStatCredit">—</div>
+            <div class="text-xs text-gray-400" id="payStatCreditCount">—</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kasiyer Performans Tablosu -->
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">👤 Kasiyer Performansı</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm" id="cashierPerfTable">
+            <thead>
+              <tr class="text-left text-gray-500 text-xs border-b">
+                <th class="pb-2">Kasiyer</th>
+                <th class="pb-2 text-center">Satış Adedi</th>
+                <th class="pb-2 text-right">Toplam Ciro</th>
+                <th class="pb-2 text-right">Pay %</th>
+              </tr>
+            </thead>
+            <tbody id="cashierPerfBody"></tbody>
+            <tfoot id="cashierPerfFoot"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-xl shadow-sm p-3"><h3 class="font-semibold mb-2">Günlük Satış Trendi</h3><canvas id="chartTrend" height="160"></canvas></div>
+        <div class="bg-white rounded-xl shadow-sm p-3"><h3 class="font-semibold mb-2">Ödeme Tipi</h3><canvas id="chartPay" height="160"></canvas></div>
+        <div class="bg-white rounded-xl shadow-sm p-3"><h3 class="font-semibold mb-2">Kategori Bazlı Satış</h3><canvas id="chartCat" height="160"></canvas></div>
+        <div class="bg-white rounded-xl shadow-sm p-3"><h3 class="font-semibold mb-2">Kasiyer Satış Grafiği</h3><canvas id="chartCashier" height="160"></canvas></div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4 mb-4">
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <h3 class="font-semibold mb-2">En Çok Satan Ürünler</h3>
+          <table class="w-full text-sm">
+            <thead><tr class="text-left text-gray-500 text-xs"><th class="py-1">Ürün</th><th>Adet</th><th class="text-right">Ciro</th></tr></thead>
+            <tbody id="topProducts"></tbody>
+          </table>
+        </div>
+        <div class="bg-white rounded-xl shadow-sm p-3">
+          <h3 class="font-semibold mb-2">Satış Geçmişi</h3>
+          <div class="max-h-96 overflow-y-auto">
+            <table class="w-full text-sm">
+              <thead class="sticky top-0 bg-white"><tr class="text-left text-gray-500 text-xs"><th class="py-1">Tarih</th><th>Müşteri</th><th>Kasiyer</th><th class="text-right">Tutar</th><th></th></tr></thead>
+              <tbody id="salesHistory"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Müşteri Satın Alma Geçmişi -->
+      <div class="bg-white rounded-xl shadow-sm p-4">
+        <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h3 class="font-semibold">👤 Müşteri Satın Alma Geçmişi</h3>
+          <input type="text" id="custHistSearch" placeholder="Müşteri ara..." class="border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary w-52" />
+        </div>
+        <div id="custHistList" class="space-y-2 max-h-[500px] overflow-y-auto"></div>
+      </div>
+    </div>
+  `;
+}
+function bindReports() {
+  // Hızlı aralık butonları
+  $$('.quick-btn').forEach(b => b.onclick = () => {
+    setQuickRange(b.dataset.quick);
+    renderView();
+  });
+  // Takvim date picker'ları
+  const fromInput = $('#reportFrom');
+  const toInput = $('#reportTo');
+  if (fromInput) fromInput.addEventListener('change', e => { state.reportDateFrom = e.target.value; if (!state.reportDateTo || state.reportDateTo < state.reportDateFrom) { state.reportDateTo = state.reportDateFrom; } renderView(); });
+  if (toInput) toInput.addEventListener('change', e => { state.reportDateTo = e.target.value; renderView(); });
+
+  if (state.session.role !== 'admin') return;
+  const bounds = getRangeBounds();
+  const filtered = state.sales.filter(s => s.createdAt >= bounds.start && s.createdAt < bounds.end);
+  const valid = filtered.filter(s => !s.cancelled);
+
+  // Ödeme tipi özet kartları
+  const payTotals = { cash: 0, card: 0, credit: 0 };
+  const payCounts = { cash: 0, card: 0, credit: 0 };
+  valid.forEach(s => {
+    const t = s.paymentType;
+    if (payTotals[t] !== undefined) { payTotals[t] += s.total; payCounts[t]++; }
+  });
+  const setEl = (id, val) => { const el = $(id); if (el) el.textContent = val; };
+  setEl('#payStatCash',       fmt(payTotals.cash));
+  setEl('#payStatCashCount',  payCounts.cash + ' işlem');
+  setEl('#payStatCard',       fmt(payTotals.card));
+  setEl('#payStatCardCount',  payCounts.card + ' işlem');
+  setEl('#payStatCredit',     fmt(payTotals.credit));
+  setEl('#payStatCreditCount',payCounts.credit + ' işlem');
+
+  // Trend
+  const days = buildDayBuckets(bounds);
+  valid.forEach(s => {
+    const k = dayKey(s.createdAt);
+    if (days[k] !== undefined) days[k] += s.total;
+  });
+  state.charts.trend = new Chart($('#chartTrend'), {
+    type: 'line',
+    data: { labels: Object.keys(days), datasets: [{ label: 'Ciro', data: Object.values(days), borderColor: getCssVar('--color-primary'), backgroundColor: getCssVar('--color-primary-light'), tension: 0.3, fill: true }] },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Pay
+  const pay = { cash:0, card:0, credit:0 };
+  valid.forEach(s => { pay[s.paymentType] = (pay[s.paymentType] || 0) + s.total; });
+  state.charts.pay = new Chart($('#chartPay'), {
+    type: 'doughnut',
+    data: { labels: ['Nakit','Kart','Veresiye'], datasets: [{ data: [pay.cash, pay.card, pay.credit], backgroundColor: ['#10b981','#3b82f6','#f59e0b'] }] },
+    options: { responsive: true }
+  });
+
+  // Category
+  const catMap = {};
+  valid.forEach(s => s.items.forEach(i => {
+    const p = state.products.find(x => x.id === i.productId);
+    const catId = p ? p.category : null;
+    const cat = state.categories.find(c => c.id === catId);
+    const name = cat ? cat.name : 'Genel';
+    catMap[name] = (catMap[name] || 0) + i.sellPrice * i.qty;
+  }));
+  state.charts.cat = new Chart($('#chartCat'), {
+    type: 'bar',
+    data: { labels: Object.keys(catMap), datasets: [{ label: 'Ciro', data: Object.values(catMap), backgroundColor: getCssVar('--color-primary') }] },
+    options: { responsive: true, plugins: { legend: { display: false } } }
+  });
+
+  // Cashier performance table + chart
+  const cMap = {};
+  valid.forEach(s => {
+    const name = s.cashierName || 'Bilinmiyor';
+    if (!cMap[name]) cMap[name] = { count: 0, total: 0 };
+    cMap[name].count += 1;
+    cMap[name].total += s.total;
+  });
+  const totalRev2 = Object.values(cMap).reduce((a, v) => a + v.total, 0);
+  const cashierRows = Object.entries(cMap).sort((a, b) => b[1].total - a[1].total);
+  const perfColors = ['#8b5cf6','#3b82f6','#10b981','#f59e0b','#ef4444'];
+  $('#cashierPerfBody').innerHTML = cashierRows.length === 0
+    ? `<tr><td colspan="4" class="text-center py-3 text-gray-400">Satış kaydı yok</td></tr>`
+    : cashierRows.map(([name, data], idx) => `
+      <tr class="border-t">
+        <td class="py-2 flex items-center gap-2">
+          <span class="inline-block w-3 h-3 rounded-full" style="background:${perfColors[idx % perfColors.length]}"></span>
+          <span class="font-medium">${esc(name)}</span>
+        </td>
+        <td class="py-2 text-center text-gray-700">${data.count} satış</td>
+        <td class="py-2 text-right font-semibold text-green-700">${fmt(data.total)}</td>
+        <td class="py-2 text-right text-gray-500">${totalRev2 ? (data.total / totalRev2 * 100).toFixed(1) : 0}%</td>
+      </tr>
+    `).join('');
+  $('#cashierPerfFoot').innerHTML = `
+    <tr class="border-t-2 border-gray-300 font-bold bg-gray-50">
+      <td class="py-2 pl-1">TOPLAM</td>
+      <td class="py-2 text-center">${valid.length} satış</td>
+      <td class="py-2 text-right text-green-700">${fmt(totalRev2)}</td>
+      <td class="py-2 text-right">100%</td>
+    </tr>
+  `;
+  state.charts.cashier = new Chart($('#chartCashier'), {
+    type: 'bar',
+    data: {
+      labels: cashierRows.map(([n]) => n),
+      datasets: [{ label: 'Ciro (TL)', data: cashierRows.map(([, d]) => d.total), backgroundColor: cashierRows.map((_, i) => perfColors[i % perfColors.length]) }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Top products
+  const tp = {};
+  valid.forEach(s => s.items.forEach(i => {
+    if (!tp[i.productId]) tp[i.productId] = { name: i.name, qty: 0, total: 0 };
+    tp[i.productId].qty += i.qty;
+    tp[i.productId].total += i.sellPrice * i.qty;
+  }));
+  const top = Object.values(tp).sort((a,b) => b.qty - a.qty).slice(0, 10);
+  $('#topProducts').innerHTML = top.length === 0 ? `<tr><td colspan="3" class="text-center p-3 text-gray-400">Veri yok</td></tr>` : top.map(t => `
+    <tr class="border-t"><td class="py-1">${esc(t.name)}</td><td>${t.qty}</td><td class="text-right">${fmt(t.total)}</td></tr>
+  `).join('');
+
+  // History
+  const hist = filtered.slice().sort((a,b) => b.createdAt - a.createdAt);
+  $('#salesHistory').innerHTML = hist.length === 0 ? `<tr><td colspan="5" class="text-center p-3 text-gray-400">Kayıt yok</td></tr>` : hist.map(s => `
+    <tr class="border-t ${s.cancelled ? 'opacity-50 line-through' : ''}">
+      <td class="py-1 text-xs">${fmtDate(s.createdAt)}</td>
+      <td class="text-xs">${esc(s.customerName || '-')}</td>
+      <td class="text-xs">${esc(s.cashierName)}</td>
+      <td class="text-right font-semibold text-xs">${fmt(s.total)}</td>
+      <td class="text-right">
+        ${s.cancelled ? '<span class="text-xs text-red-600">İptal</span>' : `<button data-cancel="${s.id}" class="text-xs text-red-600 hover:underline admin-only">İptal</button>`}
+      </td>
+    </tr>
+  `).join('');
+  $$('#salesHistory [data-cancel]').forEach(b => b.onclick = () => {
+    confirmDialog('Bu satışı iptal etmek istediğinizden emin misiniz? Stoklar geri yüklenecek.', () => cancelSale(b.dataset.cancel));
+  });
+
+  // Müşteri satın alma geçmişi
+  function buildCustHist(filter) {
+    const t = (filter || '').trim().toLowerCase();
+    const custMap = {};
+    state.sales.filter(s => !s.cancelled && (s.customerId || s.customerName)).forEach(s => {
+      const key = s.customerId || ('__' + (s.customerName || '').toLowerCase().trim());
+      if (!custMap[key]) {
+        const reg = s.customerId ? state.customers.find(c => c.id === s.customerId) : null;
+        custMap[key] = { name: reg ? reg.name : (s.customerName || ''), phone: reg ? (reg.phone||'') : (s.customerPhone||''), sales: [] };
+      }
+      custMap[key].sales.push(s);
+    });
+    let entries = Object.values(custMap).sort((a,b) => b.sales.reduce((x,s)=>x+s.total,0) - a.sales.reduce((x,s)=>x+s.total,0));
+    if (t) entries = entries.filter(e => e.name.toLowerCase().includes(t) || e.phone.includes(t));
+    const el = $('#custHistList');
+    if (!el) return;
+    if (!entries.length) { el.innerHTML = `<div class="text-center py-6 text-gray-400">Müşteri bulunamadı</div>`; return; }
+    el.innerHTML = entries.map(e => {
+      const total = e.sales.reduce((a,s)=>a+s.total,0);
+      return `
+        <details class="border rounded-lg">
+          <summary class="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-gray-50 select-none">
+            <div>
+              <span class="font-medium">${esc(e.name)}</span>
+              ${e.phone ? `<span class="text-xs text-gray-400 ml-2">${esc(e.phone)}</span>` : ''}
+            </div>
+            <div class="flex items-center gap-3 text-sm">
+              <span class="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">${e.sales.length} alışveriş</span>
+              <span class="font-bold text-green-700">${fmt(total)}</span>
+            </div>
+          </summary>
+          <div class="px-4 pb-3 border-t">
+            <table class="w-full text-xs mt-2">
+              <thead><tr class="text-gray-400"><th class="py-1 text-left">Tarih</th><th class="text-left">Ürünler</th><th class="text-left">Ödeme</th><th class="text-right">Tutar</th></tr></thead>
+              <tbody>${e.sales.slice().sort((a,b)=>b.createdAt-a.createdAt).map(s=>`
+                <tr class="border-t ${s.cancelled?'line-through opacity-50':''}">
+                  <td class="py-1">${fmtDate(s.createdAt)}</td>
+                  <td>${s.items.map(i=>esc(i.name)+' x'+i.qty).join(', ')}</td>
+                  <td>${({cash:'Nakit',card:'Kart',credit:'Veresiye'})[s.paymentType]||''}</td>
+                  <td class="text-right font-semibold">${fmt(s.total)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>`;
+    }).join('');
+  }
+  buildCustHist('');
+  const custSearchEl = $('#custHistSearch');
+  if (custSearchEl) custSearchEl.addEventListener('input', e => buildCustHist(e.target.value));
+}
+
+function fillTop10Customers() {
+  const body = $('#top10Body');
+  const empty = $('#top10Empty');
+  if (!body) return;
+  // customerId ya da customerName bazlı gruplama
+  const normN = n => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const map = {};
+  state.sales.filter(s => !s.cancelled && (s.customerId || s.customerName)).forEach(s => {
+    // customerId varsa onu kullan; yoksa kayıtlı müşteride ada göre ara
+    let resolvedId = s.customerId;
+    if (!resolvedId && s.customerName) {
+      const found = state.customers.find(c => normN(c.name) === normN(s.customerName));
+      if (found) resolvedId = found.id;
+    }
+    const key = resolvedId || ('__' + normN(s.customerName));
+    if (!map[key]) {
+      const reg = resolvedId ? state.customers.find(c => c.id === resolvedId) : null;
+      map[key] = {
+        name:  reg ? reg.name  : (s.customerName || ''),
+        phone: reg ? (reg.phone || '') : (s.customerPhone || ''),
+        count: 0, total: 0
+      };
+    }
+    map[key].count++;
+    map[key].total += s.total;
+  });
+  const top = Object.values(map).sort((a, b) => b.total - a.total).slice(0, 10);
+  if (!top.length) {
+    body.innerHTML = '';
+    if (empty) empty.classList.remove('hidden');
+    return;
+  }
+  if (empty) empty.classList.add('hidden');
+  const medals = ['🥇','🥈','🥉'];
+  body.innerHTML = top.map((c, i) => `
+    <tr class="border-t hover:bg-gray-50">
+      <td class="py-2 pl-1 text-lg">${medals[i] || (i + 1)}</td>
+      <td class="py-2 font-medium">${esc(c.name || '-')}</td>
+      <td class="py-2 text-gray-500 text-xs">${esc(c.phone || '-')}</td>
+      <td class="py-2 text-center">
+        <span class="bg-blue-100 text-blue-700 text-xs font-semibold px-2 py-0.5 rounded-full">${c.count} kez</span>
+      </td>
+      <td class="py-2 text-right font-bold text-green-700">${fmt(c.total)}</td>
+    </tr>`).join('');
+}
+
+async function cancelSale(saleId) {
+  if (!state.session || state.session.role !== 'admin') { showToast('Bu işlem için yönetici yetkisi gerekli', 'error'); return; }
+  const s = state.sales.find(x => x.id === saleId);
+  if (!s || s.cancelled) return;
+  const items = [];
+  const warnings = [];
+  for (const it of s.items) {
+    const p = state.products.find(x => x.id === it.productId);
+    if (p) {
+      items.push({ coll: 'products', obj: { ...p, stock: (p.stock || 0) + it.qty } });
+    } else {
+      warnings.push(`"${it.name}" silinmiş — stok geri yüklenemedi`);
+    }
+  }
+  if (s.paymentType === 'credit' && s.customerId) {
+    const c = state.customers.find(x => x.id === s.customerId);
+    if (c) {
+      items.push({ coll: 'customers', obj: { ...c, balance: (c.balance || 0) - s.total } });
+    } else {
+      warnings.push('Müşteri silinmiş — veresiye bakiyesi düzeltilemedi');
+    }
+  }
+  const cancelled = { ...s, cancelled: true, cancelledAt: Date.now(), cancelledBy: state.session.cashierName, cancelNote: warnings.join(' | ') || null };
+  items.push({ coll: 'sales', obj: cancelled });
+  try {
+    await batchSave(items);
+    if (warnings.length) showToast('İptal edildi (uyarı): ' + warnings[0], 'warning');
+    else showToast('Satış iptal edildi', 'success');
+    if (!state.fb.enabled) renderView();
+  } catch (e) {
+    showToast('İptal başarısız: ' + e.message, 'error');
+  }
+}
+
+function todayBounds() {
+  const d = new Date(); d.setHours(0,0,0,0);
+  const start = d.getTime();
+  const end = start + 24 * 60 * 60 * 1000;
+  return { start, end };
+}
+function getRangeBounds() {
+  const fromStr = state.reportDateFrom || toLocalISODate(new Date());
+  const toStr   = state.reportDateTo   || fromStr;
+  const start   = new Date(fromStr + 'T00:00:00').getTime();
+  const end     = new Date(toStr   + 'T00:00:00').getTime() + 24 * 60 * 60 * 1000;
+  return { start, end };
+}
+function setQuickRange(type) {
+  const today = new Date();
+  const toStr = toLocalISODate(today);
+  let fromStr = toStr;
+  if (type === 'week') {
+    const f = new Date(today); f.setDate(f.getDate() - 6);
+    fromStr = toLocalISODate(f);
+  } else if (type === 'month') {
+    const f = new Date(today); f.setDate(f.getDate() - 29);
+    fromStr = toLocalISODate(f);
+  } else if (type === 'all') {
+    fromStr = '2020-01-01';
+  }
+  state.reportDateFrom = fromStr;
+  state.reportDateTo = toStr;
+}
+function buildDayBuckets(bounds) {
+  const map = {};
+  let cur = new Date(bounds.start); cur.setHours(0,0,0,0);
+  const last = new Date(bounds.end);
+  while (cur <= last) {
+    map[dayKey(cur.getTime())] = 0;
+    cur = new Date(cur.getTime() + 24*60*60*1000);
+  }
+  return map;
+}
+function dayKey(ts) {
+  const d = new Date(ts);
+  return ('0'+d.getDate()).slice(-2) + '/' + ('0'+(d.getMonth()+1)).slice(-2);
+}
+function getCssVar(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#d97706';
+}
+
+// ============ SETTINGS VIEW ============
+function renderSettings() {
+  return `
+    <div class="p-3 md:p-4 max-w-4xl mx-auto">
+      <h2 class="text-xl font-bold mb-4">Ayarlar</h2>
+
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">Mağaza</h3>
+        <div class="grid md:grid-cols-2 gap-3 text-sm">
+          <div><label class="block text-gray-600 mb-1">Mağaza Adı</label><input id="setStore" class="w-full border rounded-lg p-2" value="${esc(state.settings.storeName || STORE_NAME_DEFAULT)}" /></div>
+          <div><label class="block text-gray-600 mb-1">Tema Rengi</label><input id="setColor" type="color" class="w-full border rounded-lg h-10" value="${state.settings.primaryColor || DEFAULT_PRIMARY}" /></div>
+        </div>
+        <button id="saveStoreBtn" class="mt-3 btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Kaydet</button>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">Şifre Yönetimi</h3>
+        <div class="grid md:grid-cols-2 gap-3 text-sm">
+          <div><label class="block text-gray-600 mb-1">Yönetim Şifresi (yeni)</label><input id="pwAdmin" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
+          <div></div>
+          ${[1,2,3].map(i => `
+            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Adı</label><input id="cName${i}" class="w-full border rounded-lg p-2" value="${esc(state.settings['cashier'+i+'Name'] || ('Kasiyer ' + i))}" /></div>
+            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Şifresi (yeni)</label><input id="pwC${i}" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
+          `).join('')}
+        </div>
+        <button id="savePwBtn" class="mt-3 btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Şifreleri Güncelle</button>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">Firebase Config</h3>
+        <p class="text-xs text-gray-500 mb-2">Firebase Console'dan kopyaladığınız config objesini (JSON veya JS) buraya yapıştırın. Boş kaydederseniz Firebase devre dışı kalır.</p>
+        <textarea id="setFbCfg" rows="8" class="w-full border rounded-lg p-2 font-mono text-xs" placeholder='{"apiKey":"...", "authDomain":"...", "projectId":"...", "storageBucket":"...", "messagingSenderId":"...", "appId":"..."}'>${esc(LS.get('firebaseConfigRaw','') || '')}</textarea>
+        <div class="flex gap-2 mt-3">
+          <button id="saveFbBtn" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Kaydet ve Bağlan</button>
+          <button id="disableFbBtn" class="border px-4 py-2 rounded-lg text-sm">Firebase'i Devre Dışı Bırak</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+        <h3 class="font-semibold mb-3">Veri</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button id="demoBtn" class="border rounded-lg p-3 text-sm">Demo Veri Yükle</button>
+          <button id="exportBtn" class="border rounded-lg p-3 text-sm">JSON Yedek İndir</button>
+          <button id="resetBtn" class="border border-red-200 text-red-600 rounded-lg p-3 text-sm">Tüm Veriyi Sıfırla</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+function bindSettings() {
+  $('#saveStoreBtn').onclick = () => {
+    state.settings.storeName = $('#setStore').value.trim() || STORE_NAME_DEFAULT;
+    state.settings.primaryColor = $('#setColor').value || DEFAULT_PRIMARY;
+    LS.set('settings', state.settings);
+    applyTheme();
+    showToast('Mağaza ayarları kaydedildi', 'success');
+  };
+  $('#savePwBtn').onclick = async () => {
+    const adminPw = $('#pwAdmin').value;
+    if (adminPw) state.settings.adminPassword = await hashPassword(adminPw);
+    for (const i of [1,2,3]) {
+      state.settings['cashier' + i + 'Name'] = $('#cName'+i).value.trim() || ('Kasiyer ' + i);
+      const pw = $('#pwC'+i).value;
+      if (pw) state.settings['cashier' + i + 'Password'] = await hashPassword(pw);
+    }
+    LS.set('settings', state.settings);
+    showToast('Şifreler güncellendi', 'success');
+  };
+  $('#saveFbBtn').onclick = async () => {
+    const t = $('#setFbCfg').value.trim();
+    if (!t) { showToast('Config boş', 'warning'); return; }
+    const parsed = parseConfigText(t);
+    if (!parsed || !parsed.apiKey) { showToast('Geçersiz config JSON', 'error'); return; }
+    LS.set('firebaseConfigRaw', t);
+    showToast('Config kaydedildi, sayfa yenileniyor...', 'success');
+    setTimeout(() => location.reload(), 1000);
+  };
+  $('#disableFbBtn').onclick = () => {
+    confirmDialog('Firebase devre dışı bırakılsın mı? Yerel moda geçilecek.', () => {
+      localStorage.removeItem('firebaseConfigRaw');
+      setTimeout(() => location.reload(), 500);
+    });
+  };
+  $('#demoBtn').onclick = () => {
+    confirmDialog('Demo veri yüklensin mi? Mevcut veriler korunur, üzerine eklenir.', loadDemoData);
+  };
+  $('#exportBtn').onclick = exportBackup;
+  $('#resetBtn').onclick = () => {
+    confirmDialog('TÜM veriler silinecek! Bu işlem geri alınamaz. Devam edilsin mi?', resetAllData);
+  };
+}
+
+async function loadDemoData() {
+  const normN = n => (n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const existingCatNames   = new Set(state.categories.map(c => normN(c.name)));
+  const existingProdNames  = new Set(state.products.map(p => normN(p.name)));
+  const existingCustNames  = new Set(state.customers.map(c => normN(c.name)));
+  const existingCustPhones = new Set(state.customers.map(c => (c.phone||'').replace(/\D/g,'')).filter(Boolean));
+
+  const items = [];
+  const catDefs = ['Altın','Gümüş','Pırlanta','Bijuteri'];
+  const catRefs = catDefs.map(name => {
+    const ex = state.categories.find(c => normN(c.name) === normN(name));
+    if (ex) return ex;
+    const obj = { id: uid(), name };
+    items.push({ coll: 'categories', obj });
+    return obj;
+  });
+
+  const sample = [
+    { name: 'Bilezik 22 Ayar',    cat: 0, sell: 8500,  buy: 7800,  stock: 10 },
+    { name: 'Kolye 14 Ayar',      cat: 0, sell: 3200,  buy: 2700,  stock: 8  },
+    { name: 'Gümüş Yüzük',        cat: 1, sell: 450,   buy: 280,   stock: 25 },
+    { name: 'Gümüş Bileklik',     cat: 1, sell: 320,   buy: 180,   stock: 30 },
+    { name: 'Pırlanta Tek Taş',   cat: 2, sell: 18500, buy: 15000, stock: 4  },
+    { name: 'Çelik Saat',         cat: 3, sell: 850,   buy: 500,   stock: 15 },
+    { name: 'Renkli Boncuk Kolye',cat: 3, sell: 120,   buy: 50,    stock: 50 },
+    { name: 'Küpe Set',           cat: 3, sell: 75,    buy: 30,    stock: 100}
+  ];
+  sample.forEach((s, i) => {
+    if (existingProdNames.has(normN(s.name))) return;
+    items.push({ coll: 'products', obj: { id: uid(), name: s.name, category: catRefs[s.cat].id, barcode: '86' + String(1000+i).padStart(6,'0'), buyPrice: s.buy, sellPrice: s.sell, stock: s.stock, minStock: 3 } });
+  });
+
+  [
+    { name: 'Ahmet Yılmaz', phone: '0532 111 22 33', balance: 0 },
+    { name: 'Ayşe Demir',   phone: '0533 222 33 44', balance: 1500 },
+    { name: 'Mehmet Kaya',  phone: '0535 333 44 55', balance: 0 }
+  ].forEach(c => {
+    if (existingCustNames.has(normN(c.name))) return;
+    if (existingCustPhones.has(c.phone.replace(/\D/g,''))) return;
+    items.push({ coll: 'customers', obj: { id: uid(), name: c.name, phone: c.phone, balance: c.balance, createdAt: Date.now() } });
+  });
+
+  if (!items.length) { showToast('Demo veri zaten yüklü', 'warning'); return; }
+  await batchSave(items);
+  showToast('Demo veri yüklendi (' + items.length + ' yeni kayıt)', 'success');
+  if (!state.fb.enabled) renderView();
+}
+function exportBackup() {
+  const data = {
+    exportedAt: new Date().toISOString(),
+    products: state.products,
+    categories: state.categories,
+    customers: state.customers,
+    sales: state.sales,
+    customerPayments: state.customerPayments,
+    settings: { ...state.settings, adminPassword: '***', cashier1Password: '***', cashier2Password: '***', cashier3Password: '***' }
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'pos-yedek-' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+  showToast('Yedek indirildi', 'success');
+}
+async function resetAllData() {
+  if (state.fb.enabled) {
+    try {
+      const colls = ['products','categories','customers','sales','customerPayments'];
+      for (const c of colls) {
+        const snap = await getDocs(collection(state.fb.db, c));
+        const b = writeBatch(state.fb.db);
+        snap.forEach(d => b.delete(d.ref));
+        await b.commit();
+      }
+    } catch (e) {
+      showToast('Bulut silme hatası: ' + e.message, 'error');
+      return;
+    }
+  }
+  ['products','categories','customers','sales','customerPayments'].forEach(k => {
+    state[k] = [];
+    LS.set(k, []);
+  });
+  showToast('Tüm veriler sıfırlandı', 'success');
+  renderView();
+}
+
+// ============ NAV BINDINGS ============
+// ============ KRİTİK STOK BADGE ============
+function updateLowStockBadge() {
+  const count = state.products.filter(p => p.stock <= (p.minStock || 0) && (p.minStock || 0) > 0).length;
+  const badge = $('#lowStockBadge');
+  const badgeMob = $('#lowStockBadgeMob');
+  if (badge) {
+    if (count > 0) { badge.textContent = count; badge.classList.remove('hidden'); }
+    else { badge.classList.add('hidden'); }
+  }
+  if (badgeMob) {
+    if (count > 0) { badgeMob.textContent = count; badgeMob.classList.remove('hidden'); }
+    else { badgeMob.classList.add('hidden'); }
+  }
+}
+
+// ============ GÜN SONU KAPANIS RAPORU ============
+function openDayCloseReport() {
+  const today = todayBounds();
+  const todaySales = state.sales.filter(s => !s.cancelled && s.createdAt >= today.start && s.createdAt < today.end);
+
+  const totalCount  = todaySales.length;
+  const totalRev    = todaySales.reduce((a, s) => a + (s.total || 0), 0);
+  const totalProfit = todaySales.reduce((a, s) => a + (s.profit || 0), 0);
+  const nakit       = todaySales.filter(s => s.paymentType === 'cash').reduce((a, s) => a + (s.total || 0), 0);
+  const kart        = todaySales.filter(s => s.paymentType === 'card').reduce((a, s) => a + (s.total || 0), 0);
+  const veresiye    = todaySales.filter(s => s.paymentType === 'credit').reduce((a, s) => a + (s.total || 0), 0);
+
+  // Kasiyer bazlı tablo
+  const cashierMap = {};
+  todaySales.forEach(s => {
+    const k = s.cashierName || 'Bilinmiyor';
+    if (!cashierMap[k]) cashierMap[k] = { count: 0, rev: 0, profit: 0 };
+    cashierMap[k].count++;
+    cashierMap[k].rev    += s.total  || 0;
+    cashierMap[k].profit += s.profit || 0;
+  });
+
+  // En çok satılan ürünler
+  const prodMap = {};
+  todaySales.forEach(s => (s.items || []).forEach(it => {
+    if (!prodMap[it.name]) prodMap[it.name] = { qty: 0, rev: 0 };
+    prodMap[it.name].qty += it.qty || 0;
+    prodMap[it.name].rev += (it.sellPrice || 0) * (it.qty || 0);
+  }));
+  const topProds = Object.entries(prodMap).sort((a, b) => b[1].qty - a[1].qty).slice(0, 5);
+
+  // Yeni müşteriler
+  const newCusts = state.customers.filter(c => c.createdAt && c.createdAt >= today.start && c.createdAt < today.end);
+
+  // Kritik stok
+  const kritik = state.products.filter(p => p.stock <= (p.minStock || 0) && (p.minStock || 0) > 0);
+
+  const storeName = state.settings.storeName || STORE_NAME_DEFAULT;
+  const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  const html = `
+    <div class="p-5 max-w-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="text-xl font-bold">📋 Gün Sonu Kapanış Raporu</h3>
+          <p class="text-sm text-gray-500">${esc(storeName)} — ${dateStr}</p>
+        </div>
+        <button data-act="print" class="btn-primary text-sm px-3 py-1.5 rounded-lg">🖨️ Yazdır</button>
+      </div>
+
+      <!-- Özet kartlar -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        <div class="bg-blue-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-blue-600 font-medium">Toplam Satış</div>
+          <div class="text-xl font-bold text-blue-700">${totalCount}</div>
+        </div>
+        <div class="bg-green-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-green-600 font-medium">Toplam Gelir</div>
+          <div class="text-xl font-bold text-green-700">${fmt(totalRev)}</div>
+        </div>
+        <div class="bg-orange-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-orange-600 font-medium">Kâr</div>
+          <div class="text-xl font-bold text-orange-700">${fmt(totalProfit)}</div>
+        </div>
+        <div class="bg-purple-50 rounded-lg p-3 text-center">
+          <div class="text-xs text-purple-600 font-medium">Yeni Müşteri</div>
+          <div class="text-xl font-bold text-purple-700">${newCusts.length}</div>
+        </div>
+      </div>
+
+      <!-- Ödeme dökümü -->
+      <div class="bg-gray-50 rounded-xl p-3 mb-4">
+        <div class="font-semibold text-sm mb-2">💰 Ödeme Dökümü</div>
+        <div class="grid grid-cols-3 gap-2 text-sm">
+          <div class="bg-white rounded-lg p-2 text-center border">
+            <div class="text-gray-500 text-xs">Nakit</div>
+            <div class="font-bold text-gray-800">${fmt(nakit)}</div>
+          </div>
+          <div class="bg-white rounded-lg p-2 text-center border">
+            <div class="text-gray-500 text-xs">Kart</div>
+            <div class="font-bold text-gray-800">${fmt(kart)}</div>
+          </div>
+          <div class="bg-white rounded-lg p-2 text-center border">
+            <div class="text-gray-500 text-xs">Veresiye</div>
+            <div class="font-bold text-red-700">${fmt(veresiye)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kasiyer performansı -->
+      <div class="mb-4">
+        <div class="font-semibold text-sm mb-2">👤 Kasiyer Performansı</div>
+        ${Object.keys(cashierMap).length === 0 ? '<p class="text-gray-400 text-sm">Bugün satış yok</p>' : `
+        <table class="w-full text-sm border-collapse">
+          <thead><tr class="bg-gray-100 text-xs text-gray-600">
+            <th class="text-left p-2 rounded-tl">Kasiyer</th>
+            <th class="text-center p-2">Satış</th>
+            <th class="text-right p-2">Gelir</th>
+            <th class="text-right p-2 rounded-tr">Kâr</th>
+          </tr></thead>
+          <tbody>
+            ${Object.entries(cashierMap).map(([k, v]) => `
+              <tr class="border-b">
+                <td class="p-2 font-medium">${esc(k)}</td>
+                <td class="p-2 text-center">${v.count}</td>
+                <td class="p-2 text-right">${fmt(v.rev)}</td>
+                <td class="p-2 text-right text-green-700">${fmt(v.profit)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`}
+      </div>
+
+      <!-- En çok satılan ürünler -->
+      ${topProds.length ? `
+      <div class="mb-4">
+        <div class="font-semibold text-sm mb-2">🔥 En Çok Satılan Ürünler</div>
+        <div class="space-y-1">
+          ${topProds.map(([name, v], i) => `
+            <div class="flex items-center justify-between text-sm bg-gray-50 rounded px-3 py-1.5">
+              <span class="text-gray-500 w-5">${i+1}.</span>
+              <span class="flex-1 font-medium">${esc(name)}</span>
+              <span class="text-gray-600 mr-4">${v.qty} adet</span>
+              <span class="font-semibold">${fmt(v.rev)}</span>
+            </div>`).join('')}
+        </div>
+      </div>` : ''}
+
+      <!-- Kritik stok -->
+      ${kritik.length ? `
+      <div class="bg-red-50 border border-red-200 rounded-xl p-3 mb-4">
+        <div class="font-semibold text-sm text-red-800 mb-2">⚠️ Kritik Stok (${kritik.length} ürün)</div>
+        <div class="grid grid-cols-2 gap-1 text-xs">
+          ${kritik.map(p => `
+            <div class="flex justify-between bg-white border border-red-100 rounded px-2 py-1">
+              <span class="truncate">${esc(p.name)}</span>
+              <span class="font-bold text-red-600 ml-2">${p.stock} adet</span>
+            </div>`).join('')}
+        </div>
+      </div>` : `
+      <div class="bg-green-50 border border-green-200 rounded-xl p-3 mb-4 text-sm text-green-700">
+        ✅ Tüm ürünler minimum stok seviyesinin üzerinde.
+      </div>`}
+
+      <div class="text-center mt-4">
+        <button data-act="close" class="border rounded-lg px-6 py-2 text-sm">Kapat</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html, { maxW: 'max-w-2xl' });
+  m.querySelector('[data-act="print"]').onclick = () => {
+    const printable = m.querySelector('.bg-white').innerHTML;
+    $('#printArea').innerHTML = printable;
+    $('#printArea').classList.remove('hidden');
+    window.print();
+    setTimeout(() => $('#printArea').classList.add('hidden'), 500);
+  };
+  m.querySelector('[data-act="close"]').onclick = () => m.remove();
+}
+
+function bindGlobal() {
+  $$('.nav-item').forEach(b => b.onclick = () => setView(b.dataset.view));
+  $$('.mob-nav-item').forEach(b => b.onclick = () => setView(b.dataset.view));
+  $('#logoutBtn').onclick = () => {
+    confirmDialog('Çıkış yapılsın mı?', () => {
+      clearSession();
+      location.reload();
+    });
+  };
+  // Günü Kapat butonları
+  const openClose = () => openDayCloseReport();
+  const dcBtn = $('#dayCloseBtn');
+  const dcBtnSb = $('#dayCloseBtnSidebar');
+  if (dcBtn) dcBtn.onclick = openClose;
+  if (dcBtnSb) dcBtnSb.onclick = openClose;
+  $('#mobileMenuBtn').onclick = openMobileSidebar;
+  $('#closeMobileSidebar').onclick = closeMobileSidebar;
+  $('#mobileSidebarBackdrop').onclick = closeMobileSidebar;
+}
+
+// ============ INIT ============
+async function init() {
+  await loadSettings();
+  loadLocalData();
+
+  // Try to init Firebase if config exists
+  await initFirebase();
+
+  // SW register
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW kayıt hatası:', err));
+  }
+
+  initLogin();
+  bindGlobal();
+
+  // Auto session
+  const s = getSession();
+  if (s) {
+    setSession(s);
+    enterApp();
+  } else {
+    $('#loginScreen').classList.remove('hidden');
+    $('#app').classList.add('hidden');
+  }
+
+  // Oturum süresi periyodik kontrolü (her dakika)
+  setInterval(() => {
+    if (!state.session) return;
+    if (state.session.expiresAt && Date.now() > state.session.expiresAt) {
+      showToast('Oturum süreniz doldu, tekrar giriş yapın', 'warning');
+      clearSession();
+      setTimeout(() => location.reload(), 2000);
+    }
+  }, 60 * 1000);
+}
+
+init();
+</script>
+
+</body>
+</html>
