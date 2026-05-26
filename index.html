@@ -510,6 +510,20 @@ function subscribeFirestore() {
   // Clear old
   state.fb.unsubs.forEach(u => { try { u(); } catch(_){} });
   state.fb.unsubs = [];
+
+  // Ayarları senkron et (tek döküman: settings/main)
+  const settingsUnsub = onSnapshot(doc(state.fb.db, 'settings', 'main'), (snap) => {
+    if (snap.exists()) {
+      const fbSettings = snap.data();
+      // Firebase'deki ayarları uygula, Firebase config'i yerel tut
+      state.settings = { ...state.settings, ...fbSettings };
+      LS.set('settings', state.settings);
+      applyTheme();
+      if (state.view === 'settings') renderView();
+    }
+  }, (err) => console.warn('Settings sub err', err));
+  state.fb.unsubs.push(settingsUnsub);
+
   const collections = ['products','categories','customers','sales','customerPayments'];
   collections.forEach(name => {
     const u = onSnapshot(collection(state.fb.db, name), (snap) => {
@@ -2087,10 +2101,19 @@ function bindSettings() {
   $('#saveStoreBtn').onclick = () => {
     state.settings.storeName = $('#setStore').value.trim() || STORE_NAME_DEFAULT;
     state.settings.primaryColor = $('#setColor').value || DEFAULT_PRIMARY;
-    LS.set('settings', state.settings);
+    saveSettingsCloud();
     applyTheme();
     showToast('Mağaza ayarları kaydedildi', 'success');
   };
+}
+
+async function saveSettingsCloud() {
+  LS.set('settings', state.settings);
+  if (state.fb.enabled) {
+    try {
+      await setDoc(doc(state.fb.db, 'settings', 'main'), state.settings);
+    } catch(e) { console.warn('Settings save err', e); }
+  }
 }
 
 // ============ GİZLİ SİSTEM AYARLARI (Logoya 5 kez tıkla) ============
@@ -2154,8 +2177,8 @@ function openSystemSettings() {
       const pw = m.querySelector('#sys_pwC'+i).value;
       if (pw) state.settings['cashier' + i + 'Password'] = await hashPassword(pw);
     }
-    LS.set('settings', state.settings);
-    showToast('Şifreler güncellendi', 'success');
+    await saveSettingsCloud();
+    showToast('Şifreler güncellendi — tüm cihazlara senkron edildi', 'success');
   };
   m.querySelector('#sys_saveFbBtn').onclick = async () => {
     const t = m.querySelector('#sys_fbCfg').value.trim();
