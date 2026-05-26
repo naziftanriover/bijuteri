@@ -90,6 +90,18 @@
 </head>
 <body class="min-h-screen">
 
+<!-- ====================== LİSANS KİLİT EKRANI ====================== -->
+<div id="licenseScreen" class="hidden min-h-screen flex items-center justify-center px-4" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-8 text-center">
+    <div class="w-20 h-20 rounded-full mx-auto flex items-center justify-center text-white text-3xl font-bold mb-4 bg-red-500">🔒</div>
+    <h2 class="text-xl font-bold text-gray-800 mb-1">Lisans Süresi Doldu</h2>
+    <p class="text-gray-500 text-sm mb-6">Kullanmaya devam etmek için aylık aktivasyon kodunuzu girin.</p>
+    <input id="licenseCodeInput" type="text" placeholder="Aktivasyon kodu" class="w-full border-2 border-gray-200 rounded-xl p-3 text-center text-lg font-mono tracking-widest mb-3 focus:border-red-400" autocomplete="off" />
+    <button id="licenseSubmitBtn" class="w-full bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl py-3 mb-4">Kilidi Aç</button>
+    <p class="text-xs text-gray-400">Kodunuz için yöneticinizle iletişime geçin.</p>
+  </div>
+</div>
+
 <!-- ====================== LOGIN ====================== -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center px-4" style="background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);">
   <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-8">
@@ -2116,6 +2128,94 @@ async function saveSettingsCloud() {
   }
 }
 
+// ============ LİSANS SİSTEMİ ============
+async function checkLicense() {
+  // Yerel modda lisans kontrolü yok
+  if (!state.fb.enabled) return true;
+
+  // Önce localStorage'daki önbelleği kontrol et
+  const cached = LS.get('licenseCache');
+  if (cached && cached.unlockedUntil > Date.now()) {
+    // Firebase'den anlık doğrula (arka planda)
+    verifyLicenseFromFirebase(cached.codeHash);
+    return true;
+  }
+  // Firebase'den kontrol et
+  return await verifyLicenseFromFirebase(null);
+}
+
+async function verifyLicenseFromFirebase(cachedHash) {
+  try {
+    const snap = await getDoc(doc(state.fb.db, 'license', 'main'));
+    if (!snap.exists()) return true; // Lisans dökümanı yoksa serbest
+    const lic = snap.data();
+    if (!lic.active) { showLicenseScreen(); return false; }
+    if (lic.expiresAt && lic.expiresAt < Date.now()) { showLicenseScreen(); return false; }
+    // Eğer cachedHash ile eşleşiyorsa sorun yok
+    if (cachedHash && cachedHash !== lic.codeHash) {
+      // Kod değişmiş, cache geçersiz
+      LS.set('licenseCache', null);
+      showLicenseScreen(); return false;
+    }
+    return true;
+  } catch(e) {
+    console.warn('License check err', e);
+    return true; // Hata varsa engelleme
+  }
+}
+
+function showLicenseScreen() {
+  $('#loginScreen').classList.add('hidden');
+  $('#app').classList.add('hidden');
+  $('#licenseScreen').classList.remove('hidden');
+  $('#licenseCodeInput').focus();
+
+  $('#licenseSubmitBtn').onclick = async () => {
+    const code = $('#licenseCodeInput').value.trim();
+    if (!code) return;
+    const hash = await hashPassword(code);
+    try {
+      const snap = await getDoc(doc(state.fb.db, 'license', 'main'));
+      if (!snap.exists()) { showToast('Lisans bulunamadı', 'error'); return; }
+      const lic = snap.data();
+      if (hash !== lic.codeHash) { showToast('Yanlış aktivasyon kodu', 'error'); $('#licenseCodeInput').value = ''; return; }
+      // Doğru kod — önbelleğe al
+      LS.set('licenseCache', { codeHash: hash, unlockedUntil: lic.expiresAt });
+      $('#licenseScreen').classList.add('hidden');
+      showToast('Aktivasyon başarılı! Hoş geldiniz 🎉', 'success');
+      // Giriş ekranına yönlendir
+      const s = getSession();
+      if (s) { setSession(s); enterApp(); }
+      else { $('#loginScreen').classList.remove('hidden'); }
+    } catch(e) { showToast('Bağlantı hatası: ' + e.message, 'error'); }
+  };
+
+  $('#licenseCodeInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') $('#licenseSubmitBtn').click();
+  });
+}
+
+async function saveLicense(code, expiresAt) {
+  if (!state.fb.enabled) { showToast('Firebase bağlı değil', 'error'); return; }
+  const codeHash = await hashPassword(code);
+  await setDoc(doc(state.fb.db, 'license', 'main'), {
+    codeHash,
+    expiresAt,
+    active: true,
+    updatedAt: Date.now()
+  });
+  showToast('Lisans güncellendi ✅', 'success');
+}
+
+async function deactivateLicense() {
+  if (!state.fb.enabled) { showToast('Firebase bağlı değil', 'error'); return; }
+  await setDoc(doc(state.fb.db, 'license', 'main'), {
+    active: false,
+    updatedAt: Date.now()
+  }, { merge: true });
+  showToast('Lisans devre dışı bırakıldı', 'success');
+}
+
 // ============ GİZLİ SİSTEM AYARLARI (Logoya 5 kez tıkla) ============
 function openSystemSettings() {
   const html = `
@@ -2148,6 +2248,26 @@ function openSystemSettings() {
         <div class="flex gap-2 mt-2">
           <button id="sys_saveFbBtn" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Kaydet ve Bağlan</button>
           <button id="sys_disableFbBtn" class="border px-3 py-1.5 rounded-lg text-sm">Devre Dışı Bırak</button>
+        </div>
+      </div>
+
+      <!-- Lisans Yönetimi -->
+      <div class="bg-orange-50 rounded-xl p-4 mb-4 border border-orange-200">
+        <h4 class="font-semibold mb-3 text-sm text-orange-800">🔑 Lisans Yönetimi</h4>
+        <div class="space-y-2 text-sm">
+          <div>
+            <label class="block text-gray-600 mb-1">Yeni Aktivasyon Kodu</label>
+            <input id="sys_licCode" type="text" placeholder="Örn: MAYIS2025" class="w-full border rounded-lg p-2 font-mono tracking-wider" autocomplete="off" />
+          </div>
+          <div>
+            <label class="block text-gray-600 mb-1">Geçerlilik Tarihi</label>
+            <input id="sys_licExp" type="date" class="w-full border rounded-lg p-2" />
+          </div>
+          <div class="flex gap-2 mt-2">
+            <button id="sys_saveLicBtn" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white px-3 py-2 rounded-lg text-sm font-semibold">Lisansı Kaydet</button>
+            <button id="sys_deactivateLicBtn" class="border border-red-300 text-red-600 px-3 py-2 rounded-lg text-sm">Kilitle</button>
+          </div>
+          <p class="text-xs text-orange-700 mt-1">💡 Kodu müşteriye WhatsApp'tan gönderin. Tarihi geçince müşteri yeni kodu girene kadar uygulamaya giremez.</p>
         </div>
       </div>
 
@@ -2201,6 +2321,18 @@ function openSystemSettings() {
   m.querySelector('#sys_exportBtn').onclick = exportBackup;
   m.querySelector('#sys_resetBtn').onclick = () => {
     confirmDialog('TÜM veriler silinecek! Bu işlem geri alınamaz.', resetAllData);
+  };
+  m.querySelector('#sys_saveLicBtn').onclick = async () => {
+    const code = m.querySelector('#sys_licCode').value.trim();
+    const expStr = m.querySelector('#sys_licExp').value;
+    if (!code) { showToast('Aktivasyon kodu girin', 'warning'); return; }
+    if (!expStr) { showToast('Geçerlilik tarihi girin', 'warning'); return; }
+    const expiresAt = new Date(expStr + 'T23:59:59').getTime();
+    await saveLicense(code, expiresAt);
+    m.querySelector('#sys_licCode').value = '';
+  };
+  m.querySelector('#sys_deactivateLicBtn').onclick = () => {
+    confirmDialog('Müşteri uygulamayı kullanamaz hale gelecek. Kilitle?', deactivateLicense);
   };
 }
 
@@ -2520,6 +2652,10 @@ async function init() {
 
   initLogin();
   bindGlobal();
+
+  // Lisans kontrolü
+  const licenseOk = await checkLicense();
+  if (!licenseOk) return; // Kilit ekranı gösteriliyor
 
   // Auto session
   const s = getSession();
