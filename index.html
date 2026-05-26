@@ -2065,7 +2065,7 @@ function getCssVar(name) {
 // ============ SETTINGS VIEW ============
 function renderSettings() {
   return `
-    <div class="p-3 md:p-4 max-w-4xl mx-auto">
+    <div class="p-3 md:p-4 max-w-2xl mx-auto">
       <h2 class="text-xl font-bold mb-4">Ayarlar</h2>
 
       <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
@@ -2077,36 +2077,8 @@ function renderSettings() {
         <button id="saveStoreBtn" class="mt-3 btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Kaydet</button>
       </div>
 
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 class="font-semibold mb-3">Şifre Yönetimi</h3>
-        <div class="grid md:grid-cols-2 gap-3 text-sm">
-          <div><label class="block text-gray-600 mb-1">Yönetim Şifresi (yeni)</label><input id="pwAdmin" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
-          <div></div>
-          ${[1,2,3].map(i => `
-            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Adı</label><input id="cName${i}" class="w-full border rounded-lg p-2" value="${esc(state.settings['cashier'+i+'Name'] || ('Kasiyer ' + i))}" /></div>
-            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Şifresi (yeni)</label><input id="pwC${i}" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
-          `).join('')}
-        </div>
-        <button id="savePwBtn" class="mt-3 btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Şifreleri Güncelle</button>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 class="font-semibold mb-3">Firebase Config</h3>
-        <p class="text-xs text-gray-500 mb-2">Firebase Console'dan kopyaladığınız config objesini (JSON veya JS) buraya yapıştırın. Boş kaydederseniz Firebase devre dışı kalır.</p>
-        <textarea id="setFbCfg" rows="8" class="w-full border rounded-lg p-2 font-mono text-xs" placeholder='{"apiKey":"...", "authDomain":"...", "projectId":"...", "storageBucket":"...", "messagingSenderId":"...", "appId":"..."}'>${esc(LS.get('firebaseConfigRaw','') || '')}</textarea>
-        <div class="flex gap-2 mt-3">
-          <button id="saveFbBtn" class="btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Kaydet ve Bağlan</button>
-          <button id="disableFbBtn" class="border px-4 py-2 rounded-lg text-sm">Firebase'i Devre Dışı Bırak</button>
-        </div>
-      </div>
-
-      <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
-        <h3 class="font-semibold mb-3">Veri</h3>
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          <button id="demoBtn" class="border rounded-lg p-3 text-sm">Demo Veri Yükle</button>
-          <button id="exportBtn" class="border rounded-lg p-3 text-sm">JSON Yedek İndir</button>
-          <button id="resetBtn" class="border border-red-200 text-red-600 rounded-lg p-3 text-sm">Tüm Veriyi Sıfırla</button>
-        </div>
+      <div class="bg-white rounded-xl shadow-sm p-4 text-center text-gray-400 text-xs">
+        <span>v1.0 • ${state.fb.enabled ? '🟢 Bulut senkron aktif' : '🟡 Yerel mod'}</span>
       </div>
     </div>
   `;
@@ -2119,38 +2091,93 @@ function bindSettings() {
     applyTheme();
     showToast('Mağaza ayarları kaydedildi', 'success');
   };
-  $('#savePwBtn').onclick = async () => {
-    const adminPw = $('#pwAdmin').value;
+}
+
+// ============ GİZLİ SİSTEM AYARLARI (Logoya 5 kez tıkla) ============
+function openSystemSettings() {
+  const html = `
+    <div class="p-5 max-w-xl">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-2xl">🔒</span>
+        <h3 class="text-lg font-bold">Sistem Ayarları</h3>
+        <span class="ml-auto text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full font-semibold">GİZLİ</span>
+      </div>
+
+      <!-- Şifre Yönetimi -->
+      <div class="bg-gray-50 rounded-xl p-4 mb-4 border">
+        <h4 class="font-semibold mb-3 text-sm">🔑 Şifre Yönetimi</h4>
+        <div class="grid md:grid-cols-2 gap-3 text-sm">
+          <div><label class="block text-gray-600 mb-1">Yönetim Şifresi (yeni)</label><input id="sys_pwAdmin" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
+          <div></div>
+          ${[1,2,3].map(i => `
+            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Adı</label><input id="sys_cName${i}" class="w-full border rounded-lg p-2" value="${esc(state.settings['cashier'+i+'Name'] || ('Kasiyer ' + i))}" /></div>
+            <div><label class="block text-gray-600 mb-1">Kasiyer ${i} Şifresi (yeni)</label><input id="sys_pwC${i}" type="password" placeholder="Boş bırakırsanız değişmez" class="w-full border rounded-lg p-2" /></div>
+          `).join('')}
+        </div>
+        <button id="sys_savePwBtn" class="mt-3 btn-primary px-4 py-2 rounded-lg text-sm font-semibold">Şifreleri Güncelle</button>
+      </div>
+
+      <!-- Firebase Config -->
+      <div class="bg-gray-50 rounded-xl p-4 mb-4 border">
+        <h4 class="font-semibold mb-2 text-sm">☁️ Firebase Config</h4>
+        <p class="text-xs text-gray-500 mb-2">Firebase Console'dan kopyaladığınız config objesini buraya yapıştırın.</p>
+        <textarea id="sys_fbCfg" rows="6" class="w-full border rounded-lg p-2 font-mono text-xs" placeholder='{"apiKey":"...", ...}'>${esc(LS.get('firebaseConfigRaw','') || '')}</textarea>
+        <div class="flex gap-2 mt-2">
+          <button id="sys_saveFbBtn" class="btn-primary px-3 py-1.5 rounded-lg text-sm font-semibold">Kaydet ve Bağlan</button>
+          <button id="sys_disableFbBtn" class="border px-3 py-1.5 rounded-lg text-sm">Devre Dışı Bırak</button>
+        </div>
+      </div>
+
+      <!-- Veri -->
+      <div class="bg-gray-50 rounded-xl p-4 mb-4 border">
+        <h4 class="font-semibold mb-3 text-sm">💾 Veri Yönetimi</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <button id="sys_demoBtn" class="border rounded-lg p-2 text-sm">Demo Veri Yükle</button>
+          <button id="sys_exportBtn" class="border rounded-lg p-2 text-sm">JSON Yedek İndir</button>
+          <button id="sys_resetBtn" class="border border-red-200 text-red-600 rounded-lg p-2 text-sm">Tüm Veriyi Sıfırla</button>
+        </div>
+      </div>
+
+      <div class="text-center">
+        <button data-act="close" class="border rounded-lg px-6 py-2 text-sm">Kapat</button>
+      </div>
+    </div>
+  `;
+  const m = showModal(html, { maxW: 'max-w-xl' });
+  m.querySelector('[data-act="close"]').onclick = () => m.remove();
+
+  m.querySelector('#sys_savePwBtn').onclick = async () => {
+    const adminPw = m.querySelector('#sys_pwAdmin').value;
     if (adminPw) state.settings.adminPassword = await hashPassword(adminPw);
     for (const i of [1,2,3]) {
-      state.settings['cashier' + i + 'Name'] = $('#cName'+i).value.trim() || ('Kasiyer ' + i);
-      const pw = $('#pwC'+i).value;
+      state.settings['cashier' + i + 'Name'] = m.querySelector('#sys_cName'+i).value.trim() || ('Kasiyer ' + i);
+      const pw = m.querySelector('#sys_pwC'+i).value;
       if (pw) state.settings['cashier' + i + 'Password'] = await hashPassword(pw);
     }
     LS.set('settings', state.settings);
     showToast('Şifreler güncellendi', 'success');
   };
-  $('#saveFbBtn').onclick = async () => {
-    const t = $('#setFbCfg').value.trim();
+  m.querySelector('#sys_saveFbBtn').onclick = async () => {
+    const t = m.querySelector('#sys_fbCfg').value.trim();
     if (!t) { showToast('Config boş', 'warning'); return; }
     const parsed = parseConfigText(t);
-    if (!parsed || !parsed.apiKey) { showToast('Geçersiz config JSON', 'error'); return; }
+    if (!parsed || !parsed.apiKey) { showToast('Geçersiz config', 'error'); return; }
     LS.set('firebaseConfigRaw', t);
     showToast('Config kaydedildi, sayfa yenileniyor...', 'success');
     setTimeout(() => location.reload(), 1000);
   };
-  $('#disableFbBtn').onclick = () => {
-    confirmDialog('Firebase devre dışı bırakılsın mı? Yerel moda geçilecek.', () => {
+  m.querySelector('#sys_disableFbBtn').onclick = () => {
+    confirmDialog('Firebase devre dışı bırakılsın mı?', () => {
       localStorage.removeItem('firebaseConfigRaw');
       setTimeout(() => location.reload(), 500);
     });
   };
-  $('#demoBtn').onclick = () => {
-    confirmDialog('Demo veri yüklensin mi? Mevcut veriler korunur, üzerine eklenir.', loadDemoData);
+  m.querySelector('#sys_demoBtn').onclick = () => {
+    confirmDialog('Demo veri yüklensin mi?', loadDemoData);
   };
-  $('#exportBtn').onclick = exportBackup;
-  $('#resetBtn').onclick = () => {
-    confirmDialog('TÜM veriler silinecek! Bu işlem geri alınamaz. Devam edilsin mi?', resetAllData);
+  m.querySelector('#sys_exportBtn').onclick = exportBackup;
+  m.querySelector('#sys_resetBtn').onclick = () => {
+    confirmDialog('TÜM veriler silinecek! Bu işlem geri alınamaz.', resetAllData);
   };
 }
 
@@ -2436,6 +2463,23 @@ function bindGlobal() {
   $('#mobileMenuBtn').onclick = openMobileSidebar;
   $('#closeMobileSidebar').onclick = closeMobileSidebar;
   $('#mobileSidebarBackdrop').onclick = closeMobileSidebar;
+
+  // Gizli sistem ayarları — logoya 5 kez tıkla
+  let logoClickCount = 0, logoClickTimer = null;
+  const logoEl = document.querySelector('#navLogo')?.parentElement;
+  if (logoEl) {
+    logoEl.style.cursor = 'pointer';
+    logoEl.addEventListener('click', () => {
+      if (state.session?.role !== 'admin') return;
+      logoClickCount++;
+      clearTimeout(logoClickTimer);
+      logoClickTimer = setTimeout(() => { logoClickCount = 0; }, 2000);
+      if (logoClickCount >= 5) {
+        logoClickCount = 0;
+        openSystemSettings();
+      }
+    });
+  }
 }
 
 // ============ INIT ============
